@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 const _url = 'https://elearningfrcpath.com/';
 const _host = 'elearningfrcpath.com';
@@ -70,7 +71,19 @@ class _SplashScreenState extends State<SplashScreen> {
     // Preload during splash for faster first paint
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      // Mimic Chrome mobile so the site serves correct CSS/layout
+      ..setUserAgent(
+        'Mozilla/5.0 (Linux; Android 10; K) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/124.0.0.0 Mobile Safari/537.36',
+      )
       ..loadRequest(Uri.parse(_url));
+
+    // Disable Android font boosting — prevents WebView from auto-scaling
+    // text which breaks element sizing and shifts the search bar layout.
+    if (_controller.platform is AndroidWebViewController) {
+      (_controller.platform as AndroidWebViewController).setTextZoom(100);
+    }
 
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
