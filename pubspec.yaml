@@ -1,0 +1,46 @@
+name: elearningfrcpath_ios
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  webview_flutter: ^4.10.0
+  connectivity_plus: ^6.0.0
+  flutter_native_splash: ^2.4.3
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/appIcon.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true
+  web:
+    generate: false
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  color_dark: "#FFFFFF"
+  android_12:
+    color: "#FFFFFF"
+    color_dark: "#FFFFFF"
+  fullscreen: false
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/appIcon.png
