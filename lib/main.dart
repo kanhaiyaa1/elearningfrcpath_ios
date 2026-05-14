@@ -10,6 +10,27 @@ import 'package:webview_flutter/webview_flutter.dart';
 const _url = 'https://elearningfrcpath.com/';
 const _host = 'elearningfrcpath.com';
 
+// JavaScript injected after every page load.
+// Detects a pull-down gesture at scrollY=0 and notifies Flutter.
+const _pullToRefreshJs = '''
+(function() {
+  if (window.__flutterPTR) return;
+  window.__flutterPTR = true;
+  var startY = 0, pulling = false;
+  document.addEventListener('touchstart', function(e) {
+    startY = e.touches[0].clientY;
+    pulling = false;
+  }, {passive: true});
+  document.addEventListener('touchmove', function(e) {
+    if (window.scrollY === 0 && e.touches[0].clientY - startY > 80)
+      pulling = true;
+  }, {passive: true});
+  document.addEventListener('touchend', function() {
+    if (pulling) { pulling = false; FlutterPTR.postMessage('r'); }
+  }, {passive: true});
+})();
+''';
+
 void main() {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
@@ -43,9 +64,6 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     FlutterNativeSplash.remove();
-
-    // Start loading during splash so the page is ready (or near-ready)
-    // by the time the user reaches the WebView screen.
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..loadRequest(Uri.parse(_url));
@@ -82,93 +100,100 @@ class _SplashScreenState extends State<SplashScreen> {
 class WebViewScreen extends StatefulWidget {
   final WebViewController controller;
   const WebViewScreen({super.key, required this.controller});
-
   @override
   State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
 class _WebViewScreenState extends State<WebViewScreen> {
   bool _isLoading = true;
+  bool _isRefreshing = false;
   bool _isOnline = true;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   @override
   void initState() {
     super.initState();
-
     _setupConnectivity();
-    _setupNavigationDelegate();
+    _setupController();
     _checkIfAlreadyLoaded();
   }
 
-  // ── Connectivity ────────────────────────────────────────────────────────────
+  // ── Controller setup ─────────────────────────────────────────────────────────
 
-  void _setupConnectivity() {
-    Connectivity().checkConnectivity().then((results) {
-      if (mounted) {
-        setState(() => _isOnline = _hasConnection(results));
-      }
-    });
+  void _setupController() {
+    // JS channel: page tells Flutter when user pulls to refresh
+    widget.controller.addJavaScriptChannel(
+      'FlutterPTR',
+      onMessageReceived: (_) => _triggerRefresh(),
+    );
 
-    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
-      final online = _hasConnection(results);
-      if (online && !_isOnline) {
-        // Came back online — reload
-        widget.controller.loadRequest(Uri.parse(_url));
-      }
-      if (mounted) setState(() => _isOnline = online);
-    });
-  }
-
-  bool _hasConnection(List<ConnectivityResult> results) =>
-      results.any((r) => r != ConnectivityResult.none);
-
-  // ── Navigation delegate ─────────────────────────────────────────────────────
-
-  void _setupNavigationDelegate() {
     widget.controller.setNavigationDelegate(NavigationDelegate(
       onPageStarted: (_) => setState(() => _isLoading = true),
-      onPageFinished: (_) => setState(() => _isLoading = false),
-      onNavigationRequest: (request) {
-        final uri = Uri.parse(request.url);
-        // Keep internal links inside the WebView
+      onPageFinished: (_) {
+        setState(() => _isLoading = false);
+        _inject();
+      },
+      onNavigationRequest: (req) {
+        final uri = Uri.parse(req.url);
         if (uri.host.isEmpty || uri.host.contains(_host)) {
           return NavigationDecision.navigate;
         }
-        // Open external links in the device browser
         launchUrl(uri, mode: LaunchMode.externalApplication);
         return NavigationDecision.prevent;
       },
     ));
   }
 
-  // ── Pre-load detection ──────────────────────────────────────────────────────
+  void _inject() =>
+      widget.controller.runJavaScript(_pullToRefreshJs);
+
+  Future<void> _triggerRefresh() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await widget.controller.loadRequest(Uri.parse(_url));
+    // loading overlay will cover; _isRefreshing resets in onPageFinished path
+    if (mounted) setState(() => _isRefreshing = false);
+  }
+
+  // ── Connectivity ─────────────────────────────────────────────────────────────
+
+  void _setupConnectivity() {
+    Connectivity().checkConnectivity().then((r) {
+      if (mounted) setState(() => _isOnline = _online(r));
+    });
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((r) {
+      final on = _online(r);
+      if (on && !_isOnline) {
+        widget.controller.loadRequest(Uri.parse(_url));
+      }
+      if (mounted) setState(() => _isOnline = on);
+    });
+  }
+
+  bool _online(List<ConnectivityResult> r) =>
+      r.any((e) => e != ConnectivityResult.none);
+
+  // ── Pre-load detection ────────────────────────────────────────────────────────
 
   Future<void> _checkIfAlreadyLoaded() async {
     await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     try {
-      final result = await widget.controller
+      final r = await widget.controller
           .runJavaScriptReturningResult('document.readyState');
-      if (mounted && (result == '"complete"' || result == 'complete')) {
+      if (mounted && (r == '"complete"' || r == 'complete')) {
         setState(() => _isLoading = false);
+        _inject();
       }
     } catch (_) {}
   }
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
-
-  Future<void> _onRefresh() async {
-    await widget.controller.loadRequest(Uri.parse(_url));
-  }
-
   Future<void> _onRetry() async {
-    final results = await Connectivity().checkConnectivity();
+    final r = await Connectivity().checkConnectivity();
     if (!mounted) return;
-    setState(() => _isOnline = _hasConnection(results));
-    if (_isOnline) {
-      widget.controller.loadRequest(Uri.parse(_url));
-    }
+    final on = _online(r);
+    setState(() => _isOnline = on);
+    if (on) widget.controller.loadRequest(Uri.parse(_url));
   }
 
   @override
@@ -177,7 +202,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     super.dispose();
   }
 
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +218,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
       },
       child: Scaffold(
         body: SafeArea(
-          child: _isOnline ? _webViewStack() : _NoInternetScreen(onRetry: _onRetry),
+          child: _isOnline
+              ? _webViewStack()
+              : _NoInternetScreen(onRetry: _onRetry),
         ),
       ),
     );
@@ -202,19 +229,22 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Widget _webViewStack() {
     return Stack(
       children: [
-        RefreshIndicator(
-          onRefresh: _onRefresh,
-          color: const Color(0xFF1565C0),
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: SizedBox(
-              height: MediaQuery.of(context).size.height -
-                  MediaQuery.of(context).padding.top -
-                  MediaQuery.of(context).padding.bottom,
-              child: WebViewWidget(controller: widget.controller),
+        // WebView with no scroll wrapper — handles its own native scrolling
+        WebViewWidget(controller: widget.controller),
+
+        // Thin bar at top while JS-triggered pull-to-refresh is running
+        if (_isRefreshing)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: LinearProgressIndicator(
+              color: Color(0xFF1565C0),
+              backgroundColor: Color(0xFFE3F2FD),
             ),
           ),
-        ),
+
+        // Full-screen loading overlay (initial / navigation loads)
         if (_isLoading)
           Container(
             color: Colors.white,
@@ -265,7 +295,7 @@ class _NoInternetScreen extends StatelessWidget {
                 0.2126, 0.7152, 0.0722, 0, 0,
                 0.2126, 0.7152, 0.0722, 0, 0,
                 0.2126, 0.7152, 0.0722, 0, 0,
-                0,      0,      0,      1, 0,
+                0, 0, 0, 1, 0,
               ]),
               child: Image.asset(
                 'assets/appIcon.png',
@@ -275,11 +305,7 @@ class _NoInternetScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            const Icon(
-              Icons.wifi_off_rounded,
-              size: 60,
-              color: Color(0xFFBDBDBD),
-            ),
+            const Icon(Icons.wifi_off_rounded, size: 60, color: Color(0xFFBDBDBD)),
             const SizedBox(height: 16),
             const Text(
               'No Internet Connection',
@@ -293,7 +319,11 @@ class _NoInternetScreen extends StatelessWidget {
             const Text(
               'Please check your connection\nand try again.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Color(0xFF9E9E9E), height: 1.5),
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF9E9E9E),
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 32),
             SizedBox(
