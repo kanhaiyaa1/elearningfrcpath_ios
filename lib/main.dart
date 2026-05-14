@@ -10,24 +10,26 @@ import 'package:webview_flutter/webview_flutter.dart';
 const _url = 'https://elearningfrcpath.com/';
 const _host = 'elearningfrcpath.com';
 
-// JavaScript injected after every page load.
-// Detects a pull-down gesture at scrollY=0 and notifies Flutter.
-const _pullToRefreshJs = '''
+// capture:true fires BEFORE any page JS can call stopPropagation.
+// Robust scrollTop works across all mobile browsers / WebView versions.
+const _pullJs = r'''
 (function() {
-  if (window.__flutterPTR) return;
-  window.__flutterPTR = true;
-  var startY = 0, pulling = false;
+  if (window.__fptr) return;
+  window.__fptr = true;
+  var sy = 0, go = false;
+  function top() {
+    return window.scrollY || window.pageYOffset ||
+      (document.documentElement ? document.documentElement.scrollTop : 0) || 0;
+  }
   document.addEventListener('touchstart', function(e) {
-    startY = e.touches[0].clientY;
-    pulling = false;
-  }, {passive: true});
+    sy = e.touches[0].clientY; go = false;
+  }, {capture: true, passive: true});
   document.addEventListener('touchmove', function(e) {
-    if (window.scrollY === 0 && e.touches[0].clientY - startY > 80)
-      pulling = true;
-  }, {passive: true});
+    if (top() < 5 && (e.touches[0].clientY - sy) > 60) go = true;
+  }, {capture: true, passive: true});
   document.addEventListener('touchend', function() {
-    if (pulling) { pulling = false; FlutterPTR.postMessage('r'); }
-  }, {passive: true});
+    if (go) { go = false; FlutterPTR.postMessage('r'); }
+  }, {capture: true, passive: true});
 })();
 ''';
 
@@ -64,6 +66,8 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     FlutterNativeSplash.remove();
+
+    // Preload during splash for faster first paint
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..loadRequest(Uri.parse(_url));
@@ -104,34 +108,82 @@ class WebViewScreen extends StatefulWidget {
   State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
-class _WebViewScreenState extends State<WebViewScreen> {
+class _WebViewScreenState extends State<WebViewScreen>
+    with WidgetsBindingObserver {
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _hasPageError = false;
   bool _isOnline = true;
+  int _progress = 0;
+
+  // Prevents loading overlay from showing when Android briefly reloads
+  // the WebView after the app comes back from the background.
+  bool _hasEverLoaded = false;
+  bool _suppressNextPageStart = false;
+
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupConnectivity();
     _setupController();
     _checkIfAlreadyLoaded();
   }
 
-  // ── Controller setup ─────────────────────────────────────────────────────────
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _hasEverLoaded) {
+      // Suppress the brief loading flash when Android resumes the WebView
+      _suppressNextPageStart = true;
+      // Safety reset: clear flag after 3s if no page events fire
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) _suppressNextPageStart = false;
+      });
+    }
+  }
+
+  // ── Controller ───────────────────────────────────────────────────────────────
 
   void _setupController() {
-    // JS channel: page tells Flutter when user pulls to refresh
     widget.controller.addJavaScriptChannel(
       'FlutterPTR',
       onMessageReceived: (_) => _triggerRefresh(),
     );
 
     widget.controller.setNavigationDelegate(NavigationDelegate(
-      onPageStarted: (_) => setState(() => _isLoading = true),
+      onPageStarted: (_) {
+        if (_suppressNextPageStart) {
+          _suppressNextPageStart = false;
+          return; // Don't show overlay for background-resume reloads
+        }
+        setState(() {
+          _isLoading = true;
+          _hasPageError = false;
+          _progress = 0;
+        });
+      },
+      onProgress: (p) => setState(() => _progress = p),
       onPageFinished: (_) {
-        setState(() => _isLoading = false);
+        _hasEverLoaded = true;
+        _suppressNextPageStart = false;
+        setState(() {
+          _isLoading = false;
+          _isRefreshing = false;
+        });
         _inject();
+      },
+      onWebResourceError: (error) {
+        // Only show error page for main frame failures
+        if (error.isForMainFrame == true) {
+          setState(() {
+            _isLoading = false;
+            _hasPageError = true;
+          });
+        }
       },
       onNavigationRequest: (req) {
         final uri = Uri.parse(req.url);
@@ -144,15 +196,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
     ));
   }
 
-  void _inject() =>
-      widget.controller.runJavaScript(_pullToRefreshJs);
+  void _inject() => widget.controller.runJavaScript(_pullJs);
 
   Future<void> _triggerRefresh() async {
     if (_isRefreshing) return;
+    HapticFeedback.mediumImpact();
     setState(() => _isRefreshing = true);
     await widget.controller.loadRequest(Uri.parse(_url));
-    // loading overlay will cover; _isRefreshing resets in onPageFinished path
-    if (mounted) setState(() => _isRefreshing = false);
   }
 
   // ── Connectivity ─────────────────────────────────────────────────────────────
@@ -182,13 +232,24 @@ class _WebViewScreenState extends State<WebViewScreen> {
       final r = await widget.controller
           .runJavaScriptReturningResult('document.readyState');
       if (mounted && (r == '"complete"' || r == 'complete')) {
+        _hasEverLoaded = true;
         setState(() => _isLoading = false);
         _inject();
       }
     } catch (_) {}
   }
 
-  Future<void> _onRetry() async {
+  // ── Actions ──────────────────────────────────────────────────────────────────
+
+  Future<void> _retryPage() async {
+    setState(() {
+      _hasPageError = false;
+      _isLoading = true;
+    });
+    await widget.controller.loadRequest(Uri.parse(_url));
+  }
+
+  Future<void> _retryConnection() async {
     final r = await Connectivity().checkConnectivity();
     if (!mounted) return;
     final on = _online(r);
@@ -198,6 +259,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _connectivitySub?.cancel();
     super.dispose();
   }
@@ -220,7 +282,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
         body: SafeArea(
           child: _isOnline
               ? _webViewStack()
-              : _NoInternetScreen(onRetry: _onRetry),
+              : _NoInternetScreen(onRetry: _retryConnection),
         ),
       ),
     );
@@ -229,11 +291,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Widget _webViewStack() {
     return Stack(
       children: [
-        // WebView with no scroll wrapper — handles its own native scrolling
+        // WebView — no scroll wrapper, handles native scrolling itself
         WebViewWidget(controller: widget.controller),
 
-        // Thin bar at top while JS-triggered pull-to-refresh is running
-        if (_isRefreshing)
+        // Page-load error screen
+        if (_hasPageError && !_isLoading)
+          _ErrorScreen(onRetry: _retryPage),
+
+        // Pull-to-refresh progress bar (JS-triggered)
+        if (_isRefreshing && !_isLoading)
           const Positioned(
             top: 0,
             left: 0,
@@ -244,34 +310,110 @@ class _WebViewScreenState extends State<WebViewScreen> {
             ),
           ),
 
-        // Full-screen loading overlay (initial / navigation loads)
+        // Initial / navigation loading overlay with real progress
         if (_isLoading)
           Container(
             color: Colors.white,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset(
-                    'assets/appIcon.png',
-                    width: 100,
-                    height: 100,
-                    filterQuality: FilterQuality.high,
-                  ),
-                  const SizedBox(height: 24),
-                  const SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: Color(0xFF1565C0),
+            child: Column(
+              children: [
+                LinearProgressIndicator(
+                  value: _progress > 0 ? _progress / 100 : null,
+                  color: const Color(0xFF1565C0),
+                  backgroundColor: const Color(0xFFE3F2FD),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          'assets/appIcon.png',
+                          width: 100,
+                          height: 100,
+                          filterQuality: FilterQuality.high,
+                        ),
+                        const SizedBox(height: 24),
+                        const SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: Color(0xFF1565C0),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
       ],
+    );
+  }
+}
+
+// ─── Error screen ─────────────────────────────────────────────────────────────
+
+class _ErrorScreen extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _ErrorScreen({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 60,
+                color: Color(0xFFBDBDBD),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Page could not be loaded',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF424242),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Something went wrong.\nPlease try again.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF9E9E9E),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1565C0),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -305,7 +447,11 @@ class _NoInternetScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            const Icon(Icons.wifi_off_rounded, size: 60, color: Color(0xFFBDBDBD)),
+            const Icon(
+              Icons.wifi_off_rounded,
+              size: 60,
+              color: Color(0xFFBDBDBD),
+            ),
             const SizedBox(height: 16),
             const Text(
               'No Internet Connection',
@@ -331,7 +477,8 @@ class _NoInternetScreen extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try Again', style: TextStyle(fontSize: 16)),
+                label: const Text('Try Again',
+                    style: TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1565C0),
                   foregroundColor: Colors.white,
