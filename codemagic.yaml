@@ -24,9 +24,12 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles
       - name: Build IPA
-        script: flutter build ipa --release
+        script: |
+          flutter build ipa --release
+          find . -name "*.ipa" 2>/dev/null
     artifacts:
       - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
     publishing:
       app_store_connect:
         auth: integration
