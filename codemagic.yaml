@@ -17,9 +17,7 @@ workflows:
       - name: Pod install
         script: cd ios && pod install
       - name: Build IPA
-        script: |
-          flutter build ipa --release \
-            --export-options-plist=/Users/builder/export_options.plist
+        script: flutter build ipa --release
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
