@@ -22,6 +22,10 @@ workflows:
           xcode-project use-profiles
       - name: Pod install
         script: cd ios && pod install
+      - name: Fix SPM signing
+        script: |
+          find . -name "*.xcodeproj" -exec plutil -replace "attributes.LastSwiftUpdateCheck" -string "9999" {} \; 2>/dev/null || true
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
       - name: Build IPA
         script: |
           flutter build ios --release --no-codesign
@@ -33,11 +37,13 @@ workflows:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=237392V78U \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="eLearningFRCPath ios_app_store 1779647348"
+            PROVISIONING_PROFILE_SPECIFIER="eLearningFRCPath ios_app_store 1779647348" \
+            OTHER_CODE_SIGN_FLAGS="--keychain /Users/builder/Library/codemagic-cli-tools/keychains/$(ls /Users/builder/Library/codemagic-cli-tools/keychains/ | head -1)"
           xcodebuild -exportArchive \
             -archivePath build/Runner.xcarchive \
             -exportPath build/ios/ipa \
-            -exportOptionsPlist /Users/builder/export_options.plist
+            -exportOptionsPlist /Users/builder/export_options.plist \
+            -allowProvisioningUpdates
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
