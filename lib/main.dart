@@ -10,6 +10,8 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'bookmarks_screen.dart';
 const _host = 'elearningfrcpath.com';
 
 const _tabs = [
@@ -161,6 +163,50 @@ class _MainScreenState extends State<MainScreen> {
     Share.share('$title\n$url', subject: title);
   }
 
+  Future<void> _bookmarkCurrentPage() async {
+    final controller = _controllers[_currentIndex];
+    final url = await controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
+    final title = await controller.getTitle() ?? 'eLearningFRCPath';
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('bookmarks') ?? [];
+
+    final exists = raw.any((e) => e.contains(url));
+    if (exists) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Already bookmarked!')),
+        );
+      }
+      return;
+    }
+
+    raw.add('$title|||$url');
+    await prefs.setStringList('bookmarks', raw);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bookmark saved!'),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
+    }
+  }
+
+  void _openBookmarks() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BookmarksScreen(
+          onOpenUrl: (url) {
+            _controllers[_currentIndex].loadRequest(Uri.parse(url));
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -183,8 +229,19 @@ class _MainScreenState extends State<MainScreen> {
           centerTitle: true,
           actions: [
             IconButton(
+              icon: const Icon(Icons.bookmark_border, color: Colors.white),
+              onPressed: _bookmarkCurrentPage,
+              tooltip: 'Bookmark',
+            ),
+            IconButton(
+              icon: const Icon(Icons.bookmarks_outlined, color: Colors.white),
+              onPressed: _openBookmarks,
+              tooltip: 'View Bookmarks',
+            ),
+            IconButton(
               icon: const Icon(Icons.share, color: Colors.white),
               onPressed: _shareCurrentPage,
+              tooltip: 'Share',
             ),
           ],
         ),
