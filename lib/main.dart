@@ -11,6 +11,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'bookmarks_screen.dart';
 const _host = 'elearningfrcpath.com';
 
@@ -154,6 +155,20 @@ class _MainScreenState extends State<MainScreen> {
       }
       return c;
     }).toList();
+    _triggerRateUs();
+  }
+
+  Future<void> _triggerRateUs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final sessionCount = (prefs.getInt('session_count') ?? 0) + 1;
+    await prefs.setInt('session_count', sessionCount);
+
+    if (sessionCount == 3) {
+      final inAppReview = InAppReview.instance;
+      if (await inAppReview.isAvailable()) {
+        await inAppReview.requestReview();
+      }
+    }
   }
 
   Future<void> _shareCurrentPage() async {
