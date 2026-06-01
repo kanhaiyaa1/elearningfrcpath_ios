@@ -9,6 +9,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:share_plus/share_plus.dart';
 const _host = 'elearningfrcpath.com';
 
 const _tabs = [
@@ -153,6 +154,13 @@ class _MainScreenState extends State<MainScreen> {
     }).toList();
   }
 
+  Future<void> _shareCurrentPage() async {
+    final controller = _controllers[_currentIndex];
+    final url = await controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
+    final title = await controller.getTitle() ?? 'eLearningFRCPath';
+    Share.share('$title\n$url', subject: title);
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -168,6 +176,18 @@ class _MainScreenState extends State<MainScreen> {
         }
       },
       child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF2E7D32),
+          elevation: 0,
+          title: Image.asset('assets/appIcon.png', height: 36),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.share, color: Colors.white),
+              onPressed: _shareCurrentPage,
+            ),
+          ],
+        ),
         body: SafeArea(
           child: IndexedStack(
             index: _currentIndex,
