@@ -43,29 +43,39 @@ const _pullJs = r'''
 })();
 ''';
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('Background message: ${message.notification?.title}');
+}
+
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   await Firebase.initializeApp();
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await _setupFCM();
   runApp(const MyApp());
 }
 
 Future<void> _setupFCM() async {
   final messaging = FirebaseMessaging.instance;
-  
-  // Request permission (iOS requires this)
+
   await messaging.requestPermission(
     alert: true,
     badge: true,
     sound: true,
   );
 
-  // Get FCM token (for testing)
+  await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
   final token = await messaging.getToken();
   debugPrint('FCM Token: $token');
 
-  // Handle foreground notifications
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     debugPrint('Foreground message: ${message.notification?.title}');
   });
