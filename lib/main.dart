@@ -7,7 +7,8 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
-
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 const _host = 'elearningfrcpath.com';
 
 const _tabs = [
@@ -38,10 +39,32 @@ const _pullJs = r'''
 })();
 ''';
 
-void main() {
+void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+  await Firebase.initializeApp();
+  await _setupFCM();
   runApp(const MyApp());
+}
+
+Future<void> _setupFCM() async {
+  final messaging = FirebaseMessaging.instance;
+  
+  // Request permission (iOS requires this)
+  await messaging.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  // Get FCM token (for testing)
+  final token = await messaging.getToken();
+  debugPrint('FCM Token: $token');
+
+  // Handle foreground notifications
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    debugPrint('Foreground message: ${message.notification?.title}');
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -350,6 +373,16 @@ class _WebViewTabState extends State<WebViewTab> with WidgetsBindingObserver {
     return Stack(
       children: [
         WebViewWidget(controller: widget.controller),
+        if (_isLoading && _hasEverLoaded)
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: LinearProgressIndicator(
+              value: _progress > 0 ? _progress / 100 : null,
+              color: const Color(0xFF2E7D32),
+              backgroundColor: const Color(0xFFE8F5E9),
+              minHeight: 3,
+            ),
+          ),
         if (_hasPageError && !_isLoading)
           _ErrorScreen(onRetry: _retryPage),
         if (_isRefreshing && !_isLoading)
