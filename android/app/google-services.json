@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "75217371093",
+    "project_id": "elearningfrcpath-7838b",
+    "storage_bucket": "elearningfrcpath-7838b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:75217371093:android:cc7047681d1ebeb74d475c",
+        "android_client_info": {
+          "package_name": "com.elearningfrcpath.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2kt_fT4NCkYco1ZckUP4fnGcr7Whr0nY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
