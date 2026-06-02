@@ -1,4 +1,4 @@
-package com.example.elearningfrcpath_ios
+package com.elearningfrcpath.android
 
 import io.flutter.embedding.android.FlutterActivity
 
