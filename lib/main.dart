@@ -67,14 +67,18 @@ Future<void> _setupFCM() async {
     sound: true,
   );
 
+  try {
+    final token = await messaging.getToken();
+    debugPrint('FCM Token: $token');
+  } catch (e) {
+    debugPrint('FCM token error (ignored): $e');
+  }
+
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
     alert: true,
     badge: true,
     sound: true,
   );
-
-  final token = await messaging.getToken();
-  debugPrint('FCM Token: $token');
 
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     debugPrint('Foreground message: ${message.notification?.title}');
