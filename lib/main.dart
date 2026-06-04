@@ -133,6 +133,9 @@ class _SplashScreenState extends State<SplashScreen> {
           width: 250,
           height: 250,
           filterQuality: FilterQuality.high,
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(Icons.school, size: 100, color: Color(0xFF2E7D32));
+          },
         ),
       ),
     );
