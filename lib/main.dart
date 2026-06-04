@@ -152,26 +152,30 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  late final List<WebViewController> _controllers;
+  List<WebViewController> _controllers = [];
 
   @override
   void initState() {
     super.initState();
-    _controllers = _tabs.map((tab) {
-      final c = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setUserAgent(
-          'Mozilla/5.0 (Linux; Android 10; K) '
-          'AppleWebKit/537.36 (KHTML, like Gecko) '
-          'Chrome/124.0.0.0 Mobile Safari/537.36',
-        )
-        ..loadRequest(Uri.parse(tab['url']!));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _controllers = _tabs.map((tab) {
+          final c = WebViewController()
+            ..setJavaScriptMode(JavaScriptMode.unrestricted)
+            ..setUserAgent(
+              'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+              'AppleWebKit/605.1.15 (KHTML, like Gecko) '
+              'Version/17.0 Mobile/15E148 Safari/604.1',
+            )
+            ..loadRequest(Uri.parse(tab['url']!));
 
-      if (c.platform is AndroidWebViewController) {
-        (c.platform as AndroidWebViewController).setTextZoom(100);
-      }
-      return c;
-    }).toList();
+          if (c.platform is AndroidWebViewController) {
+            (c.platform as AndroidWebViewController).setTextZoom(100);
+          }
+          return c;
+        }).toList();
+      });
+    });
     _triggerRateUs();
   }
 
@@ -241,6 +245,11 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_controllers.isEmpty) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
