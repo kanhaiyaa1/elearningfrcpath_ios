@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,75 +11,52 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'bookmarks_screen.dart';
+
 const _host = 'elearningfrcpath.com';
 
 const _tabs = [
-  {'label': 'Home', 'url': 'https://elearningfrcpath.com/'},
-  {'label': 'FRCPath', 'url': 'https://www.elearningfrcpath.com/frcpath-part-1-histopathology-course'},
-  {'label': 'Contact', 'url': 'https://www.elearningfrcpath.com/contact'},
-  {'label': 'Login', 'url': 'https://www.elearningfrcpath.com/login'},
+  {'label': 'Home', 'url': 'https://elearningfrcpath.com/', 'icon': 'home'},
+  {'label': 'FRCPath', 'url': 'https://www.elearningfrcpath.com/frcpath-part-1-histopathology-course', 'icon': 'book'},
+  {'label': 'Contact', 'url': 'https://www.elearningfrcpath.com/contact', 'icon': 'contact'},
+  {'label': 'Login', 'url': 'https://www.elearningfrcpath.com/login', 'icon': 'person'},
 ];
-
-const _pullJs = r'''
-(function() {
-  if (window.__fptr) return;
-  window.__fptr = true;
-  var sy = 0, go = false;
-  function top() {
-    return window.scrollY || window.pageYOffset ||
-      (document.documentElement ? document.documentElement.scrollTop : 0) || 0;
-  }
-  document.addEventListener('touchstart', function(e) {
-    sy = e.touches[0].clientY; go = false;
-  }, {capture: true, passive: true});
-  document.addEventListener('touchmove', function(e) {
-    if (top() < 5 && (e.touches[0].clientY - sy) > 60) go = true;
-  }, {capture: true, passive: true});
-  document.addEventListener('touchend', function() {
-    if (go) { go = false; FlutterPTR.postMessage('r'); }
-  }, {capture: true, passive: true});
-})();
-''';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  debugPrint('Background message: ${message.notification?.title}');
 }
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  await _setupFCM();
   runApp(const MyApp());
+  _initFirebase();
+}
+
+Future<void> _initFirebase() async {
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    await _setupFCM();
+  } catch (e) {
+    debugPrint('Firebase error: $e');
+  }
 }
 
 Future<void> _setupFCM() async {
   final messaging = FirebaseMessaging.instance;
-
-  await messaging.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
-
+  await messaging.requestPermission(alert: true, badge: true, sound: true);
   try {
     final token = await messaging.getToken();
     debugPrint('FCM Token: $token');
   } catch (e) {
-    debugPrint('FCM token error (ignored): $e');
+    debugPrint('FCM token error: $e');
   }
-
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-    alert: true,
-    badge: true,
-    sound: true,
+    alert: true, badge: true, sound: true,
   );
-
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    debugPrint('Foreground message: ${message.notification?.title}');
+  FirebaseMessaging.onMessage.listen((message) {
+    debugPrint('Message: ${message.notification?.title}');
   });
 }
 
@@ -99,8 +75,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-// ─── Splash ───────────────────────────────────────────────────────────────────
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -129,19 +103,14 @@ class _SplashScreenState extends State<SplashScreen> {
       body: Center(
         child: Image.asset(
           'assets/appIcon.png',
-          width: 250,
-          height: 250,
-          filterQuality: FilterQuality.high,
-          errorBuilder: (context, error, stackTrace) {
-            return const Icon(Icons.school, size: 100, color: Color(0xFF2E7D32));
-          },
+          width: 250, height: 250,
+          errorBuilder: (_, __, ___) =>
+              const Icon(Icons.school, size: 100, color: Color(0xFF2E7D32)),
         ),
       ),
     );
   }
 }
-
-// ─── Main Screen with Bottom Nav ──────────────────────────────────────────────
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -151,281 +120,46 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  List<WebViewController> _controllers = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _initControllers();
-    _triggerRateUs();
-  }
-
-  void _initControllers() {
-    _controllers = List.generate(_tabs.length, (i) {
-      return WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setUserAgent(
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
-          'AppleWebKit/605.1.15 (KHTML, like Gecko) '
-          'Version/17.0 Mobile/15E148 Safari/604.1',
-        );
-    });
-  }
-
-  Future<void> _triggerRateUs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final sessionCount = (prefs.getInt('session_count') ?? 0) + 1;
-    await prefs.setInt('session_count', sessionCount);
-
-    if (sessionCount == 3) {
-      final inAppReview = InAppReview.instance;
-      if (await inAppReview.isAvailable()) {
-        await inAppReview.requestReview();
-      }
-    }
-  }
-
-  Future<void> _shareCurrentPage() async {
-    final controller = _controllers[_currentIndex];
-    final url = await controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
-    final title = await controller.getTitle() ?? 'eLearningFRCPath';
-    Share.share('$title\n$url', subject: title);
-  }
-
-  Future<void> _bookmarkCurrentPage() async {
-    final controller = _controllers[_currentIndex];
-    final url = await controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
-    final title = await controller.getTitle() ?? 'eLearningFRCPath';
-
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList('bookmarks') ?? [];
-
-    final exists = raw.any((e) => e.contains(url));
-    if (exists) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Already bookmarked!')),
-        );
-      }
-      return;
-    }
-
-    raw.add('$title|||$url');
-    await prefs.setStringList('bookmarks', raw);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bookmark saved!'),
-          backgroundColor: Color(0xFF2E7D32),
-        ),
-      );
-    }
-  }
-
-  void _openBookmarks() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BookmarksScreen(
-          onOpenUrl: (url) {
-            _controllers[_currentIndex].loadRequest(Uri.parse(url));
-          },
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_controllers.isEmpty) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        if (await _controllers[_currentIndex].canGoBack()) {
-          _controllers[_currentIndex].goBack();
-        } else if (_currentIndex != 0) {
-          setState(() => _currentIndex = 0);
-        } else {
-          SystemNavigator.pop();
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF2E7D32),
-          elevation: 0,
-          title: Image.asset('assets/appIcon.png', height: 36),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.bookmark_border, color: Colors.white),
-              onPressed: _bookmarkCurrentPage,
-              tooltip: 'Bookmark',
-            ),
-            IconButton(
-              icon: const Icon(Icons.bookmarks_outlined, color: Colors.white),
-              onPressed: _openBookmarks,
-              tooltip: 'View Bookmarks',
-            ),
-            IconButton(
-              icon: const Icon(Icons.share, color: Colors.white),
-              onPressed: _shareCurrentPage,
-              tooltip: 'Share',
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: IndexedStack(
-            index: _currentIndex,
-            children: List.generate(
-              _tabs.length,
-              (i) => WebViewTab(
-                controller: _controllers[i],
-                url: _tabs[i]['url']!,
-              ),
-            ),
-          ),
-        ),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: const Color(0xFF2E7D32),
-          unselectedItemColor: Colors.grey,
-          backgroundColor: Colors.white,
-          elevation: 8,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book_outlined),
-              activeIcon: Icon(Icons.menu_book),
-              label: 'FRCPath',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.contact_mail_outlined),
-              activeIcon: Icon(Icons.contact_mail),
-              label: 'Contact',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Login',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── WebView Tab ──────────────────────────────────────────────────────────────
-
-class WebViewTab extends StatefulWidget {
-  final WebViewController controller;
-  final String url;
-  const WebViewTab({super.key, required this.controller, required this.url});
-  @override
-  State<WebViewTab> createState() => _WebViewTabState();
-}
-
-class _WebViewTabState extends State<WebViewTab> with WidgetsBindingObserver {
   bool _isLoading = true;
-  bool _isRefreshing = false;
-  bool _hasPageError = false;
-  bool _isOnline = true;
   int _progress = 0;
-  bool _hasEverLoaded = false;
-  bool _suppressNextPageStart = false;
+  bool _isOnline = true;
+  bool _hasPageError = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  late final WebViewController _controller;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _setupConnectivity();
-    _setupController();
-    widget.controller.loadRequest(Uri.parse(widget.url));
-    _checkIfAlreadyLoaded();
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted && _isLoading) {
-        setState(() => _isLoading = false);
-      }
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _hasEverLoaded) {
-      _suppressNextPageStart = true;
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) _suppressNextPageStart = false;
-      });
-    }
-  }
-
-  void _setupController() {
-    widget.controller.addJavaScriptChannel(
-      'FlutterPTR',
-      onMessageReceived: (_) => _triggerRefresh(),
-    );
-
-    widget.controller.setNavigationDelegate(NavigationDelegate(
-      onPageStarted: (_) {
-        if (_suppressNextPageStart) {
-          _suppressNextPageStart = false;
-          return;
-        }
-        setState(() {
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageStarted: (_) => setState(() {
           _isLoading = true;
           _hasPageError = false;
           _progress = 0;
-        });
-      },
-      onProgress: (p) => setState(() => _progress = p),
-      onPageFinished: (_) {
-        _hasEverLoaded = true;
-        _suppressNextPageStart = false;
-        setState(() {
-          _isLoading = false;
-          _isRefreshing = false;
-        });
-        _inject();
-      },
-      onWebResourceError: (error) {
-        if (error.isForMainFrame == true) {
-          setState(() {
-            _isLoading = false;
-            _hasPageError = true;
-          });
-        }
-      },
-      onNavigationRequest: (req) {
-        final uri = Uri.parse(req.url);
-        if (uri.host.isEmpty || uri.host.contains(_host)) {
-          return NavigationDecision.navigate;
-        }
-        launchUrl(uri, mode: LaunchMode.externalApplication);
-        return NavigationDecision.prevent;
-      },
-    ));
-  }
-
-  void _inject() => widget.controller.runJavaScript(_pullJs);
-
-  Future<void> _triggerRefresh() async {
-    if (_isRefreshing) return;
-    HapticFeedback.mediumImpact();
-    setState(() => _isRefreshing = true);
-    await widget.controller.loadRequest(Uri.parse(widget.url));
+        }),
+        onProgress: (p) => setState(() => _progress = p),
+        onPageFinished: (_) => setState(() => _isLoading = false),
+        onWebResourceError: (error) {
+          if (error.isForMainFrame == true) {
+            setState(() {
+              _isLoading = false;
+              _hasPageError = true;
+            });
+          }
+        },
+        onNavigationRequest: (req) {
+          final uri = Uri.parse(req.url);
+          if (uri.host.isEmpty || uri.host.contains(_host)) {
+            return NavigationDecision.navigate;
+          }
+          launchUrl(uri, mode: LaunchMode.externalApplication);
+          return NavigationDecision.prevent;
+        },
+      ))
+      ..loadRequest(Uri.parse(_tabs[0]['url']!));
+    _triggerRateUs();
   }
 
   void _setupConnectivity() {
@@ -435,7 +169,7 @@ class _WebViewTabState extends State<WebViewTab> with WidgetsBindingObserver {
     _connectivitySub = Connectivity().onConnectivityChanged.listen((r) {
       final on = _online(r);
       if (on && !_isOnline) {
-        widget.controller.loadRequest(Uri.parse(widget.url));
+        _controller.loadRequest(Uri.parse(_tabs[_currentIndex]['url']!));
       }
       if (mounted) setState(() => _isOnline = on);
     });
@@ -444,221 +178,177 @@ class _WebViewTabState extends State<WebViewTab> with WidgetsBindingObserver {
   bool _online(List<ConnectivityResult> r) =>
       r.any((e) => e != ConnectivityResult.none);
 
-  Future<void> _checkIfAlreadyLoaded() async {
-    await Future.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    try {
-      final r = await widget.controller
-          .runJavaScriptReturningResult('document.readyState');
-      if (mounted && (r == '"complete"' || r == 'complete')) {
-        _hasEverLoaded = true;
-        setState(() => _isLoading = false);
-        _inject();
-      }
-    } catch (_) {}
+  Future<void> _triggerRateUs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final count = (prefs.getInt('session_count') ?? 0) + 1;
+    await prefs.setInt('session_count', count);
+    if (count == 3) {
+      final review = InAppReview.instance;
+      if (await review.isAvailable()) await review.requestReview();
+    }
   }
 
-  Future<void> _retryPage() async {
-    setState(() {
-      _hasPageError = false;
-      _isLoading = true;
-    });
-    await widget.controller.loadRequest(Uri.parse(widget.url));
+  Future<void> _shareCurrentPage() async {
+    final url = await _controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
+    final title = await _controller.getTitle() ?? 'eLearningFRCPath';
+    Share.share('$title\n$url', subject: title);
   }
 
-  Future<void> _retryConnection() async {
-    final r = await Connectivity().checkConnectivity();
-    if (!mounted) return;
-    final on = _online(r);
-    setState(() => _isOnline = on);
-    if (on) widget.controller.loadRequest(Uri.parse(widget.url));
+  Future<void> _bookmarkCurrentPage() async {
+    final url = await _controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
+    final title = await _controller.getTitle() ?? 'eLearningFRCPath';
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('bookmarks') ?? [];
+    if (raw.any((e) => e.contains(url))) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Already bookmarked!')),
+      );
+      return;
+    }
+    raw.add('$title|||$url');
+    await prefs.setStringList('bookmarks', raw);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Bookmarked!'), backgroundColor: Color(0xFF2E7D32)),
+    );
+  }
+
+  void _openBookmarks() {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => BookmarksScreen(
+        onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
+      ),
+    ));
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _connectivitySub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isOnline) {
-      return _NoInternetScreen(onRetry: _retryConnection);
-    }
-
-    return Stack(
-      children: [
-        WebViewWidget(controller: widget.controller),
-        if (_isLoading && _hasEverLoaded)
-          Positioned(
-            top: 0, left: 0, right: 0,
-            child: LinearProgressIndicator(
-              value: _progress > 0 ? _progress / 100 : null,
-              color: const Color(0xFF2E7D32),
-              backgroundColor: const Color(0xFFE8F5E9),
-              minHeight: 3,
-            ),
-          ),
-        if (_hasPageError && !_isLoading)
-          _ErrorScreen(onRetry: _retryPage),
-        if (_isRefreshing && !_isLoading)
-          const Positioned(
-            top: 0, left: 0, right: 0,
-            child: LinearProgressIndicator(
-              color: Color(0xFF2E7D32),
-              backgroundColor: Color(0xFFE8F5E9),
-            ),
-          ),
-        if (_isLoading)
-          Container(
-            color: Colors.white,
-            child: Column(
-              children: [
-                LinearProgressIndicator(
-                  value: _progress > 0 ? _progress / 100 : null,
-                  color: const Color(0xFF2E7D32),
-                  backgroundColor: const Color(0xFFE8F5E9),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset('assets/appIcon.png',
-                            width: 100, height: 100,
-                            filterQuality: FilterQuality.high),
-                        const SizedBox(height: 24),
-                        const SizedBox(
-                          width: 32, height: 32,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: Color(0xFF2E7D32),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text('Loading... progress: $_progress%',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// ─── Error screen ─────────────────────────────────────────────────────────────
-
-class _ErrorScreen extends StatelessWidget {
-  final VoidCallback onRetry;
-  const _ErrorScreen({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 36),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline_rounded,
-                  size: 60, color: Color(0xFFBDBDBD)),
-              const SizedBox(height: 16),
-              const Text('Page could not be loaded',
-                  style: TextStyle(fontSize: 18,
-                      fontWeight: FontWeight.w700, color: Color(0xFF424242))),
-              const SizedBox(height: 8),
-              const Text('Something went wrong.\nPlease try again.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14,
-                      color: Color(0xFF9E9E9E), height: 1.5)),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Retry'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E7D32),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ],
-          ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await _controller.canGoBack()) {
+          _controller.goBack();
+        } else {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF2E7D32),
+          elevation: 0,
+          title: Image.asset('assets/appIcon.png', height: 36,
+            errorBuilder: (_, __, ___) =>
+                const Text('eLearningFRCPath', style: TextStyle(color: Colors.white))),
+          centerTitle: true,
+          actions: [
+            IconButton(icon: const Icon(Icons.bookmark_border, color: Colors.white),
+                onPressed: _bookmarkCurrentPage),
+            IconButton(icon: const Icon(Icons.bookmarks_outlined, color: Colors.white),
+                onPressed: _openBookmarks),
+            IconButton(icon: const Icon(Icons.share, color: Colors.white),
+                onPressed: _shareCurrentPage),
+          ],
         ),
-      ),
-    );
-  }
-}
-
-// ─── No-internet screen ───────────────────────────────────────────────────────
-
-class _NoInternetScreen extends StatelessWidget {
-  final VoidCallback onRetry;
-  const _NoInternetScreen({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 36),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                0.2126, 0.7152, 0.0722, 0, 0,
-                0.2126, 0.7152, 0.0722, 0, 0,
-                0.2126, 0.7152, 0.0722, 0, 0,
-                0, 0, 0, 1, 0,
-              ]),
-              child: Image.asset('assets/appIcon.png',
-                  width: 80, height: 80,
-                  filterQuality: FilterQuality.high),
-            ),
-            const SizedBox(height: 24),
-            const Icon(Icons.wifi_off_rounded,
-                size: 60, color: Color(0xFFBDBDBD)),
-            const SizedBox(height: 16),
-            const Text('No Internet Connection',
-                style: TextStyle(fontSize: 20,
-                    fontWeight: FontWeight.w700, color: Color(0xFF424242))),
-            const SizedBox(height: 8),
-            const Text('Please check your connection\nand try again.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14,
-                    color: Color(0xFF9E9E9E), height: 1.5)),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try Again',
-                    style: TextStyle(fontSize: 16)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D32),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+        body: SafeArea(
+          child: !_isOnline
+              ? _NoInternetScreen(onRetry: () async {
+                  final r = await Connectivity().checkConnectivity();
+                  setState(() => _isOnline = _online(r));
+                  if (_isOnline) _controller.loadRequest(Uri.parse(_tabs[_currentIndex]['url']!));
+                })
+              : Stack(
+                  children: [
+                    WebViewWidget(controller: _controller),
+                    if (_hasPageError && !_isLoading)
+                      _ErrorScreen(onRetry: () {
+                        setState(() { _hasPageError = false; _isLoading = true; });
+                        _controller.loadRequest(Uri.parse(_tabs[_currentIndex]['url']!));
+                      }),
+                    if (_isLoading)
+                      Container(
+                        color: Colors.white,
+                        child: Column(children: [
+                          LinearProgressIndicator(
+                            value: _progress > 0 ? _progress / 100 : null,
+                            color: const Color(0xFF2E7D32),
+                            backgroundColor: const Color(0xFFE8F5E9),
+                          ),
+                          Expanded(child: Center(child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.asset('assets/appIcon.png', width: 100, height: 100,
+                                errorBuilder: (_, __, ___) => const Icon(Icons.school, size: 80)),
+                              const SizedBox(height: 24),
+                              const CircularProgressIndicator(color: Color(0xFF2E7D32), strokeWidth: 3),
+                            ],
+                          ))),
+                        ]),
+                      ),
+                  ],
                 ),
-              ),
-            ),
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (i) {
+            setState(() { _currentIndex = i; _isLoading = true; });
+            _controller.loadRequest(Uri.parse(_tabs[i]['url']!));
+          },
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: const Color(0xFF2E7D32),
+          unselectedItemColor: Colors.grey,
+          backgroundColor: Colors.white,
+          elevation: 8,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined), activeIcon: Icon(Icons.menu_book), label: 'FRCPath'),
+            BottomNavigationBarItem(icon: Icon(Icons.contact_mail_outlined), activeIcon: Icon(Icons.contact_mail), label: 'Contact'),
+            BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Login'),
           ],
         ),
       ),
     );
+  }
+}
+
+class _ErrorScreen extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _ErrorScreen({required this.onRetry});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.error_outline_rounded, size: 60, color: Color(0xFFBDBDBD)),
+        const SizedBox(height: 16),
+        const Text('Page could not be loaded', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 24),
+        ElevatedButton.icon(onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded), label: const Text('Retry'),
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32), foregroundColor: Colors.white)),
+      ])),
+    );
+  }
+}
+
+class _NoInternetScreen extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _NoInternetScreen({required this.onRetry});
+  @override
+  Widget build(BuildContext context) {
+    return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.wifi_off_rounded, size: 60, color: Color(0xFFBDBDBD)),
+      const SizedBox(height: 16),
+      const Text('No Internet Connection', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 24),
+      ElevatedButton.icon(onPressed: onRetry,
+        icon: const Icon(Icons.refresh_rounded), label: const Text('Try Again'),
+        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32), foregroundColor: Colors.white)),
+    ]));
   }
 }
