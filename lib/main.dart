@@ -355,6 +355,11 @@ class _WebViewTabState extends State<WebViewTab> with WidgetsBindingObserver {
     _setupController();
     widget.controller.loadRequest(Uri.parse(widget.url));
     _checkIfAlreadyLoaded();
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && _isLoading) {
+        setState(() => _isLoading = false);
+      }
+    });
   }
 
   @override
@@ -531,6 +536,9 @@ class _WebViewTabState extends State<WebViewTab> with WidgetsBindingObserver {
                             color: Color(0xFF2E7D32),
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        Text('Loading... progress: $_progress%',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                   ),
