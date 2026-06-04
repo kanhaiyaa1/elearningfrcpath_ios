@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:share_plus/share_plus.dart';
@@ -114,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     FlutterNativeSplash.remove();
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const MainScreen()),
@@ -157,26 +156,21 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() {
-        _controllers = _tabs.map((tab) {
-          final c = WebViewController()
-            ..setJavaScriptMode(JavaScriptMode.unrestricted)
-            ..setUserAgent(
-              'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
-              'AppleWebKit/605.1.15 (KHTML, like Gecko) '
-              'Version/17.0 Mobile/15E148 Safari/604.1',
-            )
-            ..loadRequest(Uri.parse(tab['url']!));
-
-          if (c.platform is AndroidWebViewController) {
-            (c.platform as AndroidWebViewController).setTextZoom(100);
-          }
-          return c;
-        }).toList();
-      });
-    });
+    _initControllers();
     _triggerRateUs();
+  }
+
+  void _initControllers() {
+    _controllers = List.generate(_tabs.length, (i) {
+      return WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setUserAgent(
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+          'AppleWebKit/605.1.15 (KHTML, like Gecko) '
+          'Version/17.0 Mobile/15E148 Safari/604.1',
+        )
+        ..loadRequest(Uri.parse(_tabs[i]['url']!));
+    });
   }
 
   Future<void> _triggerRateUs() async {
