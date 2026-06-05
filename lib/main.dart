@@ -151,6 +151,11 @@ class _MainScreenState extends State<MainScreen> {
         },
         onNavigationRequest: (req) {
           final uri = Uri.parse(req.url);
+          if (uri.host.contains('youtube.com') ||
+              uri.host.contains('youtu.be') ||
+              uri.host.contains('youtube-nocookie.com')) {
+            return NavigationDecision.prevent;
+          }
           if (uri.host.isEmpty || uri.host.contains(_host)) {
             return NavigationDecision.navigate;
           }
