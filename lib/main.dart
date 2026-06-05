@@ -45,12 +45,15 @@ Future<void> _initFirebase() async {
 
 Future<void> _setupFCM() async {
   final messaging = FirebaseMessaging.instance;
+
+  await Future.delayed(const Duration(seconds: 3));
+
   await messaging.requestPermission(alert: true, badge: true, sound: true);
   try {
     final token = await messaging.getToken();
     debugPrint('FCM Token: $token');
   } catch (e) {
-    debugPrint('FCM token error: $e');
+    debugPrint('FCM error: $e');
   }
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
     alert: true, badge: true, sound: true,
@@ -151,12 +154,16 @@ class _MainScreenState extends State<MainScreen> {
         },
         onNavigationRequest: (req) {
           final uri = Uri.parse(req.url);
-          if (uri.host.contains('youtube.com') ||
-              uri.host.contains('youtu.be') ||
-              uri.host.contains('youtube-nocookie.com')) {
+          final host = uri.host;
+          if (host.contains('youtube.com') || host.contains('youtu.be')) {
             return NavigationDecision.prevent;
           }
-          if (uri.host.isEmpty || uri.host.contains(_host)) {
+          if (host.isEmpty ||
+              host.contains(_host) ||
+              host.contains('google.com') ||
+              host.contains('gstatic.com') ||
+              host.contains('recaptcha.net') ||
+              host.contains('googleapis.com')) {
             return NavigationDecision.navigate;
           }
           launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -196,7 +203,14 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _shareCurrentPage() async {
     final url = await _controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
     final title = await _controller.getTitle() ?? 'eLearningFRCPath';
-    Share.share('$title\n$url', subject: title);
+    final box = context.findRenderObject() as RenderBox?;
+    Share.share(
+      '$title\n$url',
+      subject: title,
+      sharePositionOrigin: box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null,
+    );
   }
 
   Future<void> _bookmarkCurrentPage() async {
