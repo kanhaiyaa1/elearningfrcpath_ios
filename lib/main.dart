@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,15 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'bookmarks_screen.dart';
+import 'notification_service.dart';
+import 'reminder_screen.dart';
+import 'reading_list_screen.dart';
+import 'study_timer_screen.dart';
+import 'dashboard_screen.dart';
+import 'calendar_screen.dart';
+import 'biometric_service.dart';
+import 'lock_screen.dart';
+import 'biometric_settings_screen.dart';
 
 const _host = 'elearningfrcpath.com';
 
@@ -31,6 +41,7 @@ void main() async {
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   runApp(const MyApp());
   _initFirebase();
+  await NotificationService.initialize();
 }
 
 Future<void> _initFirebase() async {
@@ -45,21 +56,32 @@ Future<void> _initFirebase() async {
 
 Future<void> _setupFCM() async {
   final messaging = FirebaseMessaging.instance;
-
   await Future.delayed(const Duration(seconds: 3));
-
   await messaging.requestPermission(alert: true, badge: true, sound: true);
+
   try {
     final token = await messaging.getToken();
     debugPrint('FCM Token: $token');
   } catch (e) {
     debugPrint('FCM error: $e');
   }
+
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-    alert: true, badge: true, sound: true,
+    alert: true,
+    badge: true,
+    sound: true,
   );
+
+  // iOS handles badge count automatically via FCM when badge: true is set
+  await FirebaseMessaging.instance.setAutoInitEnabled(true);
+
   FirebaseMessaging.onMessage.listen((message) {
     debugPrint('Message: ${message.notification?.title}');
+  });
+
+  // Clear badge count when app is opened from notification
+  FirebaseMessaging.onMessageOpenedApp.listen((_) {
+    FirebaseMessaging.instance.setAutoInitEnabled(true);
   });
 }
 
@@ -90,8 +112,17 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     FlutterNativeSplash.remove();
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
+    Future.delayed(const Duration(seconds: 1), () async {
+      if (!mounted) return;
+      final biometricEnabled = await BiometricService.isBiometricEnabled();
+      if (!mounted) return;
+      if (biometricEnabled) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const LockScreen(nextScreen: MainScreen()),
+          ),
+        );
+      } else {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const MainScreen()),
         );
@@ -107,7 +138,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Image.asset(
           'assets/appIcon.png',
           width: 250, height: 250,
-          errorBuilder: (_, __, ___) =>
+          errorBuilder: (_, _, _) =>
               const Icon(Icons.school, size: 100, color: Color(0xFF2E7D32)),
         ),
       ),
@@ -143,7 +174,24 @@ class _MainScreenState extends State<MainScreen> {
           _progress = 0;
         }),
         onProgress: (p) => setState(() => _progress = p),
-        onPageFinished: (_) => setState(() => _isLoading = false),
+        onPageFinished: (_) async {
+          setState(() => _isLoading = false);
+          // Track pages visited
+          final prefs = await SharedPreferences.getInstance();
+          final pages = (prefs.getInt('pages_visited') ?? 0) + 1;
+          await prefs.setInt('pages_visited', pages);
+          // Hide purchase buttons (Apple IAP requirement)
+          _controller.runJavaScript('''
+            (function() {
+              document.querySelectorAll('a, button').forEach(function(el) {
+                var text = el.innerText.trim().toLowerCase();
+                if (text === 'add to cart' || text === 'buy now') {
+                  el.style.display = 'none';
+                }
+              });
+            })();
+          ''');
+        },
         onWebResourceError: (error) {
           if (error.isForMainFrame == true) {
             setState(() {
@@ -201,8 +249,10 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _shareCurrentPage() async {
+    HapticFeedback.lightImpact();
     final url = await _controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
     final title = await _controller.getTitle() ?? 'eLearningFRCPath';
+    if (!mounted) return;
     final box = context.findRenderObject() as RenderBox?;
     Share.share(
       '$title\n$url',
@@ -214,26 +264,82 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _bookmarkCurrentPage() async {
+    HapticFeedback.lightImpact();
     final url = await _controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
     final title = await _controller.getTitle() ?? 'eLearningFRCPath';
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList('bookmarks') ?? [];
     if (raw.any((e) => e.contains(url))) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Already bookmarked!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Already bookmarked!')),
+        );
+      }
       return;
     }
     raw.add('$title|||$url');
     await prefs.setStringList('bookmarks', raw);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Bookmarked!'), backgroundColor: Color(0xFF2E7D32)),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bookmarked!'), backgroundColor: Color(0xFF2E7D32)),
+      );
+    }
   }
 
   void _openBookmarks() {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => BookmarksScreen(
+        onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
+      ),
+    ));
+  }
+
+  Future<void> _saveToReadingList() async {
+    HapticFeedback.lightImpact();
+    final url = await _controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
+    final title = await _controller.getTitle() ?? 'eLearningFRCPath';
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('reading_list') ?? [];
+
+    final exists = raw.any((e) {
+      final item = jsonDecode(e);
+      return item['url'] == url;
+    });
+
+    if (exists) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Already in reading list!')),
+        );
+      }
+      return;
+    }
+
+    final now = DateTime.now();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final item = ReadingListItem(
+      title: title,
+      url: url,
+      savedAt: 'Saved ${now.day}/${now.month}/${now.year} at $hour:$minute',
+    );
+
+    raw.add(jsonEncode(item.toJson()));
+    await prefs.setStringList('reading_list', raw);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Added to Reading List ✅'),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
+    }
+  }
+
+  void _openReadingList() {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ReadingListScreen(
         onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
       ),
     ));
@@ -262,14 +368,56 @@ class _MainScreenState extends State<MainScreen> {
           backgroundColor: const Color(0xFF2E7D32),
           elevation: 0,
           title: Image.asset('assets/appIcon.png', height: 36,
-            errorBuilder: (_, __, ___) =>
+            errorBuilder: (_, _, _) =>
                 const Text('eLearningFRCPath', style: TextStyle(color: Colors.white))),
           centerTitle: true,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.security, color: Colors.white),
+              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const BiometricSettingsScreen())); },
+              tooltip: 'Security',
+            ),
+            IconButton(
+              icon: const Icon(Icons.dashboard_outlined, color: Colors.white),
+              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => DashboardScreen(
+                    onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
+                  ))); },
+              tooltip: 'Dashboard',
+            ),
+            IconButton(
+              icon: const Icon(Icons.calendar_month_outlined, color: Colors.white),
+              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const CalendarScreen())); },
+              tooltip: 'Schedule Study Session',
+            ),
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ReminderScreen())); },
+              tooltip: 'Study Reminder',
+            ),
+            IconButton(
+              icon: const Icon(Icons.timer_outlined, color: Colors.white),
+              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const StudyTimerScreen())); },
+              tooltip: 'Study Timer',
+            ),
             IconButton(icon: const Icon(Icons.bookmark_border, color: Colors.white),
                 onPressed: _bookmarkCurrentPage),
             IconButton(icon: const Icon(Icons.bookmarks_outlined, color: Colors.white),
                 onPressed: _openBookmarks),
+            IconButton(
+              icon: const Icon(Icons.playlist_add, color: Colors.white),
+              onPressed: _saveToReadingList,
+              tooltip: 'Save to Reading List',
+            ),
+            IconButton(
+              icon: const Icon(Icons.menu_book, color: Colors.white),
+              onPressed: _openReadingList,
+              tooltip: 'Reading List',
+            ),
             IconButton(icon: const Icon(Icons.share, color: Colors.white),
                 onPressed: _shareCurrentPage),
           ],
@@ -302,7 +450,7 @@ class _MainScreenState extends State<MainScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Image.asset('assets/appIcon.png', width: 100, height: 100,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.school, size: 80)),
+                                errorBuilder: (_, _, _) => const Icon(Icons.school, size: 80)),
                               const SizedBox(height: 24),
                               const CircularProgressIndicator(color: Color(0xFF2E7D32), strokeWidth: 3),
                             ],
@@ -315,6 +463,7 @@ class _MainScreenState extends State<MainScreen> {
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (i) {
+            HapticFeedback.lightImpact();
             setState(() { _currentIndex = i; _isLoading = true; });
             _controller.loadRequest(Uri.parse(_tabs[i]['url']!));
           },

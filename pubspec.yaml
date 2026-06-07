@@ -21,6 +21,12 @@ dependencies:
   share_plus: ^10.0.0
   shared_preferences: ^2.3.0
   in_app_review: ^2.0.9
+  flutter_local_notifications: ^19.0.0
+  timezone: ^0.10.1
+  flutter_timezone: ^3.0.0
+  workmanager: ^0.9.0
+  add_2_calendar: ^3.0.1
+  local_auth: ^2.3.0
 
 dev_dependencies:
   flutter_test:

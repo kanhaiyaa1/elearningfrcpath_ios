@@ -80,6 +80,12 @@
 			<key>NSAllowsArbitraryLoadsInWebContent</key>
 			<true/>
 		</dict>
+		<key>NSFaceIDUsageDescription</key>
+		<string>eLearningFRCPath uses Face ID to keep your account secure.</string>
+		<key>NSCalendarsUsageDescription</key>
+		<string>eLearningFRCPath needs calendar access to add your study sessions.</string>
+		<key>NSCalendarsFullAccessUsageDescription</key>
+		<string>eLearningFRCPath needs calendar access to add your study sessions.</string>
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>fetch</string>
