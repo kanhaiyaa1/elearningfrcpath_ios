@@ -23,13 +23,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     setState(() => _isDeleting = true);
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getInt('user_id') ?? 0;
-
       final response = await http.post(
         Uri.parse('https://www.elearningfrcpath.com/api/delete-account'),
         body: {
-          'user_id': userId.toString(),
           'secret': 'elearning_delete_2026',
         },
       );
@@ -37,6 +33,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       final data = jsonDecode(response.body);
 
       if (data['success'] == true) {
+        final prefs = await SharedPreferences.getInstance();
         await prefs.clear();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
