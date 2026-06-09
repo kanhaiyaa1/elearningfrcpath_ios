@@ -27,6 +27,7 @@ dependencies:
   workmanager: ^0.9.0
   add_2_calendar: ^3.0.1
   local_auth: ^2.3.0
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
