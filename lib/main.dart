@@ -21,6 +21,7 @@ import 'calendar_screen.dart';
 import 'biometric_service.dart';
 import 'lock_screen.dart';
 import 'biometric_settings_screen.dart';
+import 'delete_account_screen.dart';
 
 const _host = 'elearningfrcpath.com';
 
@@ -174,22 +175,44 @@ class _MainScreenState extends State<MainScreen> {
           _progress = 0;
         }),
         onProgress: (p) => setState(() => _progress = p),
-        onPageFinished: (_) async {
+        onPageFinished: (url) async {
           setState(() => _isLoading = false);
           // Track pages visited
           final prefs = await SharedPreferences.getInstance();
           final pages = (prefs.getInt('pages_visited') ?? 0) + 1;
           await prefs.setInt('pages_visited', pages);
-          // Capture user ID from page meta tag on login
+          // Capture user ID — try window variable first, then meta tag
           try {
-            final userId = await _controller.runJavaScriptReturningResult(
-              'window.currentUserId || ""'
+            var userId = await _controller.runJavaScriptReturningResult(
+              'window.currentUserId ? window.currentUserId.toString() : ""'
             );
-            if (userId.toString().isNotEmpty && userId.toString() != '""') {
-              final id = int.tryParse(userId.toString().replaceAll('"', ''));
-              if (id != null) await prefs.setInt('user_id', id);
+            if (userId.toString() == '""' || userId.toString().isEmpty) {
+              userId = await _controller.runJavaScriptReturningResult(
+                'document.querySelector("meta[name=\'user-id\']")?.getAttribute("content") || ""'
+              );
             }
-          } catch (_) {}
+            debugPrint('Raw userId captured: $userId');
+            final idStr = userId.toString().replaceAll('"', '').trim();
+            final id = int.tryParse(idStr);
+            if (id != null && id > 0) {
+              await prefs.setInt('user_id', id);
+              debugPrint('Saved user_id: $id');
+            }
+          } catch (e) {
+            debugPrint('userId capture error: $e');
+          }
+          // Debug session — call after every page load to inspect cookies
+          if (!url.contains('/login') && !url.contains('/register')) {
+            _controller.runJavaScript('''
+              fetch('https://www.elearningfrcpath.com/api/debug-session', {
+                method: 'POST',
+                credentials: 'include'
+              })
+              .then(r => r.json())
+              .then(data => DebugSession.postMessage(JSON.stringify(data)))
+              .catch(e => DebugSession.postMessage(JSON.stringify({error: e.toString()})));
+            ''');
+          }
           // Hide purchase buttons (Apple IAP requirement)
           _controller.runJavaScript('''
             (function() {
@@ -228,6 +251,10 @@ class _MainScreenState extends State<MainScreen> {
           return NavigationDecision.prevent;
         },
       ))
+      ..addJavaScriptChannel('DeleteResult',
+          onMessageReceived: (msg) => deleteResultCallback?.call(msg.message))
+      ..addJavaScriptChannel('DebugSession',
+          onMessageReceived: (msg) => debugPrint('Session debug: ${msg.message}'))
       ..loadRequest(Uri.parse(_tabs[0]['url']!));
     _triggerRateUs();
   }
@@ -383,53 +410,72 @@ class _MainScreenState extends State<MainScreen> {
           centerTitle: true,
           actions: [
             IconButton(
-              icon: const Icon(Icons.security, color: Colors.white),
+              icon: const Icon(Icons.security, color: Colors.white, size: 22),
               onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const BiometricSettingsScreen())); },
+                  MaterialPageRoute(builder: (_) => BiometricSettingsScreen(controller: _controller))); },
               tooltip: 'Security',
+              visualDensity: VisualDensity.compact,
             ),
             IconButton(
-              icon: const Icon(Icons.dashboard_outlined, color: Colors.white),
+              icon: const Icon(Icons.dashboard_outlined, color: Colors.white, size: 22),
               onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
                   MaterialPageRoute(builder: (_) => DashboardScreen(
                     onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
                   ))); },
               tooltip: 'Dashboard',
+              visualDensity: VisualDensity.compact,
             ),
             IconButton(
-              icon: const Icon(Icons.calendar_month_outlined, color: Colors.white),
+              icon: const Icon(Icons.calendar_month_outlined, color: Colors.white, size: 22),
               onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const CalendarScreen())); },
-              tooltip: 'Schedule Study Session',
+              tooltip: 'Study Calendar',
+              visualDensity: VisualDensity.compact,
             ),
             IconButton(
-              icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+              icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
               onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const ReminderScreen())); },
               tooltip: 'Study Reminder',
+              visualDensity: VisualDensity.compact,
             ),
             IconButton(
-              icon: const Icon(Icons.timer_outlined, color: Colors.white),
+              icon: const Icon(Icons.timer_outlined, color: Colors.white, size: 22),
               onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const StudyTimerScreen())); },
               tooltip: 'Study Timer',
+              visualDensity: VisualDensity.compact,
             ),
-            IconButton(icon: const Icon(Icons.bookmark_border, color: Colors.white),
-                onPressed: _bookmarkCurrentPage),
-            IconButton(icon: const Icon(Icons.bookmarks_outlined, color: Colors.white),
-                onPressed: _openBookmarks),
             IconButton(
-              icon: const Icon(Icons.playlist_add, color: Colors.white),
+              icon: const Icon(Icons.bookmark_border, color: Colors.white, size: 22),
+              onPressed: _bookmarkCurrentPage,
+              tooltip: 'Bookmark',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              icon: const Icon(Icons.bookmarks_outlined, color: Colors.white, size: 22),
+              onPressed: _openBookmarks,
+              tooltip: 'My Bookmarks',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              icon: const Icon(Icons.playlist_add, color: Colors.white, size: 22),
               onPressed: _saveToReadingList,
               tooltip: 'Save to Reading List',
+              visualDensity: VisualDensity.compact,
             ),
             IconButton(
-              icon: const Icon(Icons.menu_book, color: Colors.white),
+              icon: const Icon(Icons.menu_book, color: Colors.white, size: 22),
               onPressed: _openReadingList,
               tooltip: 'Reading List',
+              visualDensity: VisualDensity.compact,
             ),
-            IconButton(icon: const Icon(Icons.share, color: Colors.white),
-                onPressed: _shareCurrentPage),
+            IconButton(
+              icon: const Icon(Icons.share, color: Colors.white, size: 22),
+              onPressed: _shareCurrentPage,
+              tooltip: 'Share',
+              visualDensity: VisualDensity.compact,
+            ),
           ],
         ),
         body: SafeArea(

@@ -1,71 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
+import 'package:webview_flutter/webview_flutter.dart';
 import 'dart:convert';
 
+// Registered in main.dart during controller init; set by DeleteAccountScreen
+void Function(String)? deleteResultCallback;
+
 class DeleteAccountScreen extends StatefulWidget {
-  const DeleteAccountScreen({super.key});
+  final WebViewController controller;
+  const DeleteAccountScreen({super.key, required this.controller});
   @override
   State<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
 }
 
 class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   bool _isDeleting = false;
-  final _reasonController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    deleteResultCallback = _handleDeleteResult;
+  }
 
   @override
   void dispose() {
-    _reasonController.dispose();
+    deleteResultCallback = null;
     super.dispose();
+  }
+
+  Future<void> _handleDeleteResult(String message) async {
+    final data = jsonDecode(message);
+    debugPrint('Delete result: $message');
+    setState(() => _isDeleting = false);
+    if (data['success'] == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      widget.controller.loadRequest(
+        Uri.parse('https://www.elearningfrcpath.com/logout'),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Account deleted successfully ✅'),
+              backgroundColor: Color(0xFF2E7D32)),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(data['message'] ?? 'Failed to delete.'),
+              backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Future<void> _deleteAccount() async {
     setState(() => _isDeleting = true);
-
-    try {
-      final response = await http.post(
-        Uri.parse('https://www.elearningfrcpath.com/api/delete-account'),
-        body: {
-          'secret': 'elearning_delete_2026',
-        },
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (data['success'] == true) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.clear();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account deleted successfully.'),
-              backgroundColor: Color(0xFF2E7D32),
-            ),
-          );
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(data['message'] ?? 'Failed. Please try from website profile page.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error. Please try from website profile page.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-
-    setState(() => _isDeleting = false);
+    await widget.controller.runJavaScript('''
+      fetch('https://www.elearningfrcpath.com/delete-account', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'secret=elearning_delete_2026',
+        credentials: 'include'
+      })
+      .then(r => r.json())
+      .then(data => DeleteResult.postMessage(JSON.stringify(data)))
+      .catch(e => DeleteResult.postMessage(JSON.stringify({success: false, message: e.toString()})));
+    ''');
   }
 
   void _showConfirmDialog() {
@@ -180,8 +184,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     child: Text(
                       'If you have purchased courses, you will lose access to them. '
                       'This cannot be reversed. Contact support before deleting if you have concerns.',
-                      style:
-                          TextStyle(fontSize: 13, color: Colors.brown),
+                      style: TextStyle(fontSize: 13, color: Colors.brown),
                     ),
                   ),
                 ],
