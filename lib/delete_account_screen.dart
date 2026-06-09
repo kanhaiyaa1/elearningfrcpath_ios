@@ -20,24 +20,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   }
 
   Future<void> _deleteAccount() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getInt('user_id');
-
-    if (userId == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please login first to delete your account.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-
     setState(() => _isDeleting = true);
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('user_id') ?? 0;
+
       final response = await http.post(
         Uri.parse('https://www.elearningfrcpath.com/api/delete-account'),
         body: {
@@ -63,7 +51,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(data['message'] ?? 'Failed to delete account.'),
+              content: Text(data['message'] ?? 'Failed. Please try from website profile page.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -73,7 +61,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Error connecting to server. Try again.'),
+            content: Text('Error. Please try from website profile page.'),
             backgroundColor: Colors.red,
           ),
         );

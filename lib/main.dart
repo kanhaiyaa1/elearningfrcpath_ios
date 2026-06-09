@@ -183,7 +183,7 @@ class _MainScreenState extends State<MainScreen> {
           // Capture user ID from page meta tag on login
           try {
             final userId = await _controller.runJavaScriptReturningResult(
-              'document.querySelector("meta[name=\'user-id\']")?.content || ""'
+              'window.currentUserId || ""'
             );
             if (userId.toString().isNotEmpty && userId.toString() != '""') {
               final id = int.tryParse(userId.toString().replaceAll('"', ''));
