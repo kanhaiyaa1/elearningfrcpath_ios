@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'biometric_service.dart';
+import 'delete_account_screen.dart';
 
 class BiometricSettingsScreen extends StatefulWidget {
   const BiometricSettingsScreen({super.key});
@@ -142,6 +143,24 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                   ),
                 ]),
               ),
+            const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.push(context,
+                    MaterialPageRoute(
+                        builder: (_) => const DeleteAccountScreen())),
+                icon: const Icon(Icons.delete_forever, color: Colors.red),
+                label: const Text('Delete My Account',
+                    style: TextStyle(color: Colors.red)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
           ],
         ),
       ),
