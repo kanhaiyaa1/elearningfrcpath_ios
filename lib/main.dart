@@ -180,6 +180,16 @@ class _MainScreenState extends State<MainScreen> {
           final prefs = await SharedPreferences.getInstance();
           final pages = (prefs.getInt('pages_visited') ?? 0) + 1;
           await prefs.setInt('pages_visited', pages);
+          // Capture user ID from page meta tag on login
+          try {
+            final userId = await _controller.runJavaScriptReturningResult(
+              'document.querySelector("meta[name=\'user-id\']")?.content || ""'
+            );
+            if (userId.toString().isNotEmpty && userId.toString() != '""') {
+              final id = int.tryParse(userId.toString().replaceAll('"', ''));
+              if (id != null) await prefs.setInt('user_id', id);
+            }
+          } catch (_) {}
           // Hide purchase buttons (Apple IAP requirement)
           _controller.runJavaScript('''
             (function() {
