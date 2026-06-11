@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'biometric_service.dart';
 import 'delete_account_screen.dart';
@@ -15,11 +16,19 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
   bool _isAvailable = false;
   bool _isEnabled = false;
   String _biometricLabel = 'Biometrics';
+  bool _isLoggedIn = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _checkLogin();
+  }
+
+  Future<void> _checkLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    setState(() => _isLoggedIn = userId != null && userId > 0);
   }
 
   Future<void> _load() async {
@@ -145,24 +154,27 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                   ),
                 ]),
               ),
-            const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(
-                        builder: (_) => DeleteAccountScreen(controller: widget.controller))),
-                icon: const Icon(Icons.delete_forever, color: Colors.red),
-                label: const Text('Delete My Account',
-                    style: TextStyle(color: Colors.red)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+            if (_isLoggedIn) ...[
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => DeleteAccountScreen(
+                        controller: widget.controller,
+                      ))),
+                  icon: const Icon(Icons.delete_forever, color: Colors.red),
+                  label: const Text('Delete My Account',
+                      style: TextStyle(color: Colors.red)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
