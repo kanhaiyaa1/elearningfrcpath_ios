@@ -28,6 +28,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
   Future<void> _checkLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('user_id');
+    debugPrint('Biometric screen user_id: $userId');
     setState(() => _isLoggedIn = userId != null && userId > 0);
   }
 

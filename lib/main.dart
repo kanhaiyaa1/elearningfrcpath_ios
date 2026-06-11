@@ -175,11 +175,18 @@ class _MainScreenState extends State<MainScreen> {
         'Version/17.0 Mobile/15E148 Safari/604.1 ELC_APP/1.0',
       )
       ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) => setState(() {
-          _isLoading = true;
-          _hasPageError = false;
-          _progress = 0;
-        }),
+        onPageStarted: (_) {
+          setState(() {
+            _isLoading = true;
+            _hasPageError = false;
+            _progress = 0;
+          });
+          _controller.runJavaScript('''
+            var style = document.createElement('style');
+            style.textContent = 'a[href*="cart/create"] { display: none !important; }';
+            (document.head || document.documentElement).appendChild(style);
+          ''');
+        },
         onProgress: (p) => setState(() => _progress = p),
         onPageFinished: (url) async {
           setState(() => _isLoading = false);
@@ -187,16 +194,11 @@ class _MainScreenState extends State<MainScreen> {
           final prefs = await SharedPreferences.getInstance();
           final pages = (prefs.getInt('pages_visited') ?? 0) + 1;
           await prefs.setInt('pages_visited', pages);
-          // Capture user ID — try window variable first, then meta tag
+          // Try to get user_id from window variable
           try {
-            var userId = await _controller.runJavaScriptReturningResult(
-              'window.currentUserId ? window.currentUserId.toString() : ""'
+            final userId = await _controller.runJavaScriptReturningResult(
+              'window.currentUserId ? String(window.currentUserId) : ""'
             );
-            if (userId.toString() == '""' || userId.toString().isEmpty) {
-              userId = await _controller.runJavaScriptReturningResult(
-                'document.querySelector("meta[name=\'user-id\']")?.getAttribute("content") || ""'
-              );
-            }
             debugPrint('Raw userId captured: $userId');
             final idStr = userId.toString().replaceAll('"', '').trim();
             final id = int.tryParse(idStr);
@@ -219,13 +221,27 @@ class _MainScreenState extends State<MainScreen> {
               .catch(e => DebugSession.postMessage(JSON.stringify({error: e.toString()})));
             ''');
           }
-          // Hide purchase buttons (Apple IAP requirement)
+          // Replace purchase buttons — hide Add to Cart, replace Buy Now with external browser link
           _controller.runJavaScript('''
             (function() {
+              var replaced = false;
               document.querySelectorAll('a, button').forEach(function(el) {
                 var text = el.innerText.trim().toLowerCase();
-                if (text === 'add to cart' || text === 'buy now') {
+                if (text === 'add to cart') {
                   el.style.display = 'none';
+                }
+                if (text === 'buy now' && !replaced) {
+                  replaced = true;
+                  var url = window.location.href;
+                  var btn = document.createElement('a');
+                  btn.innerText = 'Buy Now on Website';
+                  btn.style = 'display:inline-block;padding:8px 20px;background:#2E7D32;color:white;border-radius:5px;text-decoration:none;font-weight:600;cursor:pointer;';
+                  btn.onclick = function(e) {
+                    e.preventDefault();
+                    FlutterOpenUrl.postMessage(url);
+                    return false;
+                  };
+                  el.parentNode.replaceChild(btn, el);
                 }
               });
             })();
@@ -280,6 +296,10 @@ class _MainScreenState extends State<MainScreen> {
           return NavigationDecision.prevent;
         },
       ))
+      ..addJavaScriptChannel('FlutterOpenUrl',
+          onMessageReceived: (msg) {
+            launchUrl(Uri.parse(msg.message), mode: LaunchMode.externalApplication);
+          })
       ..addJavaScriptChannel('DeleteResult',
           onMessageReceived: (msg) => deleteResultCallback?.call(msg.message))
       ..addJavaScriptChannel('DebugSession',
