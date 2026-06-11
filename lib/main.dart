@@ -99,6 +99,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
       ),
       home: const SplashScreen(),
+      onUnknownRoute: (_) => MaterialPageRoute(builder: (_) => const SplashScreen()),
     );
   }
 }
@@ -170,9 +171,9 @@ class _MainScreenState extends State<MainScreen> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent(
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
-        'AppleWebKit/605.1.15 (KHTML, like Gecko) '
-        'Version/17.0 Mobile/15E148 Safari/604.1 ELC_APP/1.0',
+        'Mozilla/5.0 (Linux; Android 10; K) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/124.0.0.0 Mobile Safari/537.36 ELC_APP/1.0',
       )
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (_) {
@@ -271,16 +272,6 @@ class _MainScreenState extends State<MainScreen> {
             launchUrl(uri, mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
           }
-          if (req.url.contains('google.redirect') ||
-              req.url.contains('/login/google')) {
-            final newUri = uri.replace(
-              queryParameters: {...uri.queryParameters, 'from': 'app'},
-            );
-            debugPrint('Opening Google login: $newUri');
-            launchUrl(newUri, mode: LaunchMode.externalApplication);
-            return NavigationDecision.prevent;
-          }
-
           if (host.contains('youtube.com') || host.contains('youtu.be')) {
             return NavigationDecision.prevent;
           }
