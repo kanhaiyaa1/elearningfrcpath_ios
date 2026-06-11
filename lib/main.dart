@@ -250,11 +250,12 @@ class _MainScreenState extends State<MainScreen> {
             launchUrl(uri, mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
           }
-          if (req.url.contains('/login/google') ||
-              req.url.contains('google.redirect')) {
+          if (req.url.contains('google.redirect') ||
+              req.url.contains('/login/google')) {
             final newUri = uri.replace(
               queryParameters: {...uri.queryParameters, 'from': 'app'},
             );
+            debugPrint('Opening Google login: $newUri');
             launchUrl(newUri, mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
           }
