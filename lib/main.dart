@@ -243,6 +243,11 @@ class _MainScreenState extends State<MainScreen> {
           final uri = Uri.parse(req.url);
           final host = uri.host;
 
+          // Must load inside WebView — do not intercept
+          if (req.url.contains('/login/google/success/')) {
+            return NavigationDecision.navigate;
+          }
+
           // Open Google/Apple auth in external browser
           if (host.contains('accounts.google.com') ||
               host.contains('appleid.apple.com') ||
@@ -306,6 +311,7 @@ class _MainScreenState extends State<MainScreen> {
   void _processDeepLink(Uri uri) {
     if (uri.scheme == 'elearningfrcpath' && uri.host == 'login-success') {
       final token = uri.queryParameters['token'];
+      debugPrint('Deep link token: $token');
       if (token != null) {
         _controller.loadRequest(
           Uri.parse('https://www.elearningfrcpath.com/login/google/success/$token'),
