@@ -283,20 +283,36 @@ class _MainScreenState extends State<MainScreen> {
     _handleDeepLinks();
   }
 
-  void _handleDeepLinks() {
+  void _handleDeepLinks() async {
     final appLinks = AppLinks();
-    appLinks.uriLinkStream.listen((uri) {
-      if (uri.scheme == 'elearningfrcpath' && uri.host == 'login-success') {
-        final token = uri.queryParameters['token'];
-        if (token != null) {
-          _controller.loadRequest(
-            Uri.parse('https://www.elearningfrcpath.com/login/google/success/$token'),
-          );
-        } else {
-          _controller.loadRequest(Uri.parse('https://www.elearningfrcpath.com'));
-        }
+
+    // Handle cold start (app opened via deep link)
+    try {
+      final initialUri = await appLinks.getInitialLink();
+      if (initialUri != null) {
+        _processDeepLink(initialUri);
       }
+    } catch (e) {
+      debugPrint('Initial deep link error: $e');
+    }
+
+    // Handle warm start (app already open)
+    appLinks.uriLinkStream.listen((uri) {
+      _processDeepLink(uri);
     });
+  }
+
+  void _processDeepLink(Uri uri) {
+    if (uri.scheme == 'elearningfrcpath' && uri.host == 'login-success') {
+      final token = uri.queryParameters['token'];
+      if (token != null) {
+        _controller.loadRequest(
+          Uri.parse('https://www.elearningfrcpath.com/login/google/success/$token'),
+        );
+      } else {
+        _controller.loadRequest(Uri.parse('https://www.elearningfrcpath.com'));
+      }
+    }
   }
 
   void _setupConnectivity() {
