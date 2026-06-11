@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:app_links/app_links.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -168,6 +169,11 @@ class _MainScreenState extends State<MainScreen> {
     _setupConnectivity();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setUserAgent(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+        'AppleWebKit/605.1.15 (KHTML, like Gecko) '
+        'Version/17.0 Mobile/15E148 Safari/604.1 ELC_APP/1.0',
+      )
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (_) => setState(() {
           _isLoading = true;
@@ -236,6 +242,23 @@ class _MainScreenState extends State<MainScreen> {
         onNavigationRequest: (req) {
           final uri = Uri.parse(req.url);
           final host = uri.host;
+
+          // Open Google/Apple auth in external browser
+          if (host.contains('accounts.google.com') ||
+              host.contains('appleid.apple.com') ||
+              req.url.contains('/login/apple')) {
+            launchUrl(uri, mode: LaunchMode.externalApplication);
+            return NavigationDecision.prevent;
+          }
+          if (req.url.contains('/login/google') ||
+              req.url.contains('google.redirect')) {
+            final newUri = uri.replace(
+              queryParameters: {...uri.queryParameters, 'from': 'app'},
+            );
+            launchUrl(newUri, mode: LaunchMode.externalApplication);
+            return NavigationDecision.prevent;
+          }
+
           if (host.contains('youtube.com') || host.contains('youtu.be')) {
             return NavigationDecision.prevent;
           }
@@ -257,6 +280,23 @@ class _MainScreenState extends State<MainScreen> {
           onMessageReceived: (msg) => debugPrint('Session debug: ${msg.message}'))
       ..loadRequest(Uri.parse(_tabs[0]['url']!));
     _triggerRateUs();
+    _handleDeepLinks();
+  }
+
+  void _handleDeepLinks() {
+    final appLinks = AppLinks();
+    appLinks.uriLinkStream.listen((uri) {
+      if (uri.scheme == 'elearningfrcpath' && uri.host == 'login-success') {
+        final token = uri.queryParameters['token'];
+        if (token != null) {
+          _controller.loadRequest(
+            Uri.parse('https://www.elearningfrcpath.com/login/google/success/$token'),
+          );
+        } else {
+          _controller.loadRequest(Uri.parse('https://www.elearningfrcpath.com'));
+        }
+      }
+    });
   }
 
   void _setupConnectivity() {

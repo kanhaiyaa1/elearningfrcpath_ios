@@ -68,7 +68,16 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
-		<key>LSApplicationQueriesSchemes</key>
+		<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>elearningfrcpath</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
 		<array>
 			<string>https</string>
 			<string>http</string>
