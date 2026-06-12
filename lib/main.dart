@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:app_links/app_links.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:http/http.dart' as http;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -268,6 +268,14 @@ class _MainScreenState extends State<MainScreen> {
             return NavigationDecision.prevent;
           }
 
+          // Intercept Apple login — use native sign in instead
+          if (req.url.contains('appleid.apple.com') ||
+              req.url.contains('/auth/apple') ||
+              (req.url.contains('apple') && req.url.contains('authorize'))) {
+            _handleAppleSignIn();
+            return NavigationDecision.prevent;
+          }
+
           // Intercept Google login — use native sign in instead
           if (req.url.contains('/login/google') &&
               !req.url.contains('callback') &&
@@ -311,6 +319,53 @@ class _MainScreenState extends State<MainScreen> {
     _showOnboarding();
   }
 
+  Future<void> _handleAppleSignIn() async {
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final name = [
+        credential.givenName ?? '',
+        credential.familyName ?? '',
+      ].join(' ').trim();
+
+      final appleId = credential.userIdentifier ?? '';
+      final email = credential.email ?? '';
+
+      // Use WebView fetch so the request shares WebView's cookie jar
+      await _controller.runJavaScript('''
+        fetch('https://www.elearningfrcpath.com/login/apple/native', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'apple_id=${Uri.encodeComponent(appleId)}&email=${Uri.encodeComponent(email)}&name=${Uri.encodeComponent(name)}',
+          credentials: 'include'
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = 'https://www.elearningfrcpath.com/';
+          }
+        })
+        .catch(e => console.error('Apple login fetch error: ' + e));
+      ''');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logged in successfully ✅'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Apple sign in error: $e');
+    }
+  }
+
   Future<void> _handleGoogleSignIn() async {
     try {
       final googleSignIn = GoogleSignIn(
@@ -320,55 +375,34 @@ class _MainScreenState extends State<MainScreen> {
       final account = await googleSignIn.signIn();
       if (account == null) return;
 
-      final auth = await account.authentication;
-      final response = await http.post(
-        Uri.parse('https://www.elearningfrcpath.com/login/google/native'),
-        body: {
-          'id_token': auth.idToken ?? '',
-          'email': account.email,
-          'name': account.displayName ?? '',
-          'google_id': account.id,
-        },
-      );
+      final email = account.email;
+      final name = account.displayName ?? '';
+      final googleId = account.id;
 
-      debugPrint('Google native login response ${response.statusCode}: ${response.body}');
+      // Use WebView fetch so the request shares WebView's cookie jar
+      await _controller.runJavaScript('''
+        fetch('https://www.elearningfrcpath.com/login/google/native', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'email=${Uri.encodeComponent(email)}&name=${Uri.encodeComponent(name)}&google_id=${Uri.encodeComponent(googleId)}',
+          credentials: 'include'
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            window.location.href = 'https://www.elearningfrcpath.com/';
+          }
+        })
+        .catch(e => console.error('Google login fetch error: ' + e));
+      ''');
 
-      Map<String, dynamic> data;
-      try {
-        data = jsonDecode(response.body);
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Google login endpoint not ready yet. Please try the website login.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      if (data['success'] == true) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('user_id', data['user_id']);
-        _controller.loadRequest(Uri.parse('https://www.elearningfrcpath.com'));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Logged in successfully ✅'),
-              backgroundColor: Color(0xFF2E7D32),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(data['message'] ?? 'Google login failed. Please try again.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logged in successfully ✅'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
       }
     } catch (e) {
       debugPrint('Google sign in error: $e');
