@@ -40,7 +40,7 @@ workflows:
         script: |
           flutter build ipa --release \
             --export-options-plist=ios/ExportOptions.plist
-          find . -name "*.ipa" 2>/dev/null
+          find . -name "*.ipa" 2>/dev/null || true
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
