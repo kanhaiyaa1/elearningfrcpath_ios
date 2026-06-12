@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:app_links/app_links.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -261,21 +263,27 @@ class _MainScreenState extends State<MainScreen> {
           final uri = Uri.parse(req.url);
           final host = uri.host;
 
-          // Must load inside WebView — do not intercept
-          if (req.url.contains('/login/google/success/')) {
-            return NavigationDecision.navigate;
-          }
-
-          // Open Google/Apple auth in external browser
-          if (host.contains('accounts.google.com') ||
-              host.contains('appleid.apple.com') ||
-              req.url.contains('/login/apple')) {
-            launchUrl(uri, mode: LaunchMode.externalApplication);
-            return NavigationDecision.prevent;
-          }
+          // Block YouTube
           if (host.contains('youtube.com') || host.contains('youtu.be')) {
             return NavigationDecision.prevent;
           }
+
+          // Intercept Google login — use native sign in instead
+          if (req.url.contains('/login/google') &&
+              !req.url.contains('callback') &&
+              !req.url.contains('success')) {
+            _handleGoogleSignIn();
+            return NavigationDecision.prevent;
+          }
+
+          // Allow login providers inside WebView
+          if (host.contains('accounts.google.com') ||
+              host.contains('appleid.apple.com') ||
+              host.contains('apple.com')) {
+            return NavigationDecision.navigate;
+          }
+
+          // Allow internal + auth domains
           if (host.isEmpty ||
               host.contains(_host) ||
               host.contains('google.com') ||
@@ -284,6 +292,7 @@ class _MainScreenState extends State<MainScreen> {
               host.contains('googleapis.com')) {
             return NavigationDecision.navigate;
           }
+
           launchUrl(uri, mode: LaunchMode.externalApplication);
           return NavigationDecision.prevent;
         },
@@ -300,6 +309,70 @@ class _MainScreenState extends State<MainScreen> {
     _triggerRateUs();
     _handleDeepLinks();
     _showOnboarding();
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    try {
+      final googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
+        serverClientId: '75217371093-h5cen5vejcs0ucms8c5a3rvi3ibp1oqf.apps.googleusercontent.com',
+      );
+      final account = await googleSignIn.signIn();
+      if (account == null) return;
+
+      final auth = await account.authentication;
+      final response = await http.post(
+        Uri.parse('https://www.elearningfrcpath.com/login/google/native'),
+        body: {
+          'id_token': auth.idToken ?? '',
+          'email': account.email,
+          'name': account.displayName ?? '',
+          'google_id': account.id,
+        },
+      );
+
+      debugPrint('Google native login response ${response.statusCode}: ${response.body}');
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Google login endpoint not ready yet. Please try the website login.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (data['success'] == true) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('user_id', data['user_id']);
+        _controller.loadRequest(Uri.parse('https://www.elearningfrcpath.com'));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Logged in successfully ✅'),
+              backgroundColor: Color(0xFF2E7D32),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(data['message'] ?? 'Google login failed. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Google sign in error: $e');
+    }
   }
 
   Future<void> _showOnboarding() async {

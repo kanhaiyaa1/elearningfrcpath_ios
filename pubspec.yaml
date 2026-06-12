@@ -2,7 +2,7 @@ name: elearningfrcpath_ios
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+25
+version: 1.0.0+26
 
 environment:
   sdk: ^3.11.5
@@ -29,6 +29,7 @@ dependencies:
   local_auth: ^2.3.0
   http: ^1.2.0
   app_links: ^6.0.0
+  google_sign_in: ^6.2.1
 
 dev_dependencies:
   flutter_test:
