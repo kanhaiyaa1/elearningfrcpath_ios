@@ -23,6 +23,7 @@ import 'biometric_service.dart';
 import 'lock_screen.dart';
 import 'biometric_settings_screen.dart';
 import 'delete_account_screen.dart';
+import 'onboarding_screen.dart';
 
 const _host = 'elearningfrcpath.com';
 
@@ -298,6 +299,20 @@ class _MainScreenState extends State<MainScreen> {
       ..loadRequest(Uri.parse(_tabs[0]['url']!));
     _triggerRateUs();
     _handleDeepLinks();
+    _showOnboarding();
+  }
+
+  Future<void> _showOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    final shown = prefs.getBool('onboarding_shown') ?? false;
+    if (!shown) {
+      await prefs.setBool('onboarding_shown', true);
+      if (mounted) {
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => const OnboardingScreen(),
+        ));
+      }
+    }
   }
 
   void _handleDeepLinks() async {
