@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -268,10 +269,11 @@ class _MainScreenState extends State<MainScreen> {
             return NavigationDecision.prevent;
           }
 
-          // Intercept Apple login — use native sign in instead
-          if (req.url.contains('appleid.apple.com') ||
+          // Intercept Apple login — iOS native only (Android uses WebView web flow)
+          if (Platform.isIOS && (
+              req.url.contains('appleid.apple.com') ||
               req.url.contains('/auth/apple') ||
-              (req.url.contains('apple') && req.url.contains('authorize'))) {
+              (req.url.contains('apple') && req.url.contains('authorize')))) {
             _handleAppleSignIn();
             return NavigationDecision.prevent;
           }
