@@ -27,6 +27,7 @@ import 'lock_screen.dart';
 import 'biometric_settings_screen.dart';
 import 'delete_account_screen.dart';
 import 'onboarding_screen.dart';
+import 'quiz_screen.dart';
 
 const _host = 'elearningfrcpath.com';
 
@@ -188,8 +189,12 @@ class _MainScreenState extends State<MainScreen> {
           });
           _controller.runJavaScript('''
             var style = document.createElement('style');
-            style.textContent = 'a[href*="cart/create"] { display: none !important; }';
-            (document.head || document.documentElement).appendChild(style);
+            style.textContent = `
+              a[href*="cart/create"],
+              a[href*="checkout"],
+              a[href*="cart"] { display: none !important; }
+            `;
+            document.head.appendChild(style);
           ''');
         },
         onProgress: (p) => setState(() => _progress = p),
@@ -226,28 +231,27 @@ class _MainScreenState extends State<MainScreen> {
               .catch(e => DebugSession.postMessage(JSON.stringify({error: e.toString()})));
             ''');
           }
-          // Replace purchase buttons — hide Add to Cart, replace Buy Now with external browser link
+          // Hide all purchase-related elements
           _controller.runJavaScript('''
             (function() {
-              var replaced = false;
               document.querySelectorAll('a, button').forEach(function(el) {
                 var text = el.innerText.trim().toLowerCase();
-                if (text === 'add to cart') {
+                if (text === 'add to cart' ||
+                    text === 'buy now' ||
+                    text === 'buy now on website' ||
+                    text === 'purchase' ||
+                    text === 'checkout') {
                   el.style.display = 'none';
                 }
-                if (text === 'buy now' && !replaced) {
-                  replaced = true;
-                  var url = window.location.href;
-                  var btn = document.createElement('a');
-                  btn.innerText = 'Buy Now on Website';
-                  btn.style = 'display:inline-block;padding:8px 20px;background:#2E7D32;color:white;border-radius:5px;text-decoration:none;font-weight:600;cursor:pointer;';
-                  btn.onclick = function(e) {
-                    e.preventDefault();
-                    FlutterOpenUrl.postMessage(url);
-                    return false;
-                  };
-                  el.parentNode.replaceChild(btn, el);
-                }
+              });
+              document.querySelectorAll('a[href*="cart/create"]').forEach(function(el) {
+                el.style.display = 'none';
+              });
+              document.querySelectorAll('a[href*="checkout"]').forEach(function(el) {
+                el.style.display = 'none';
+              });
+              document.querySelectorAll('a[href*="cart"]').forEach(function(el) {
+                el.style.display = 'none';
               });
             })();
           ''');
@@ -608,40 +612,10 @@ class _MainScreenState extends State<MainScreen> {
           centerTitle: true,
           actions: [
             IconButton(
-              icon: const Icon(Icons.security, color: Colors.white, size: 22),
+              icon: const Icon(Icons.quiz_outlined, color: Colors.white, size: 22),
               onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => BiometricSettingsScreen(controller: _controller))); },
-              tooltip: 'Security',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.dashboard_outlined, color: Colors.white, size: 22),
-              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => DashboardScreen(
-                    onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
-                  ))); },
-              tooltip: 'Dashboard',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.calendar_month_outlined, color: Colors.white, size: 22),
-              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const CalendarScreen())); },
-              tooltip: 'Study Calendar',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
-              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const ReminderScreen())); },
-              tooltip: 'Study Reminder',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.timer_outlined, color: Colors.white, size: 22),
-              onPressed: () { HapticFeedback.lightImpact(); Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const StudyTimerScreen())); },
-              tooltip: 'Study Timer',
+                  MaterialPageRoute(builder: (_) => const QuizScreen())); },
+              tooltip: 'FRCPath MCQ Quiz',
               visualDensity: VisualDensity.compact,
             ),
             IconButton(
@@ -651,28 +625,66 @@ class _MainScreenState extends State<MainScreen> {
               visualDensity: VisualDensity.compact,
             ),
             IconButton(
-              icon: const Icon(Icons.bookmarks_outlined, color: Colors.white, size: 22),
-              onPressed: _openBookmarks,
-              tooltip: 'My Bookmarks',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.playlist_add, color: Colors.white, size: 22),
-              onPressed: _saveToReadingList,
-              tooltip: 'Save to Reading List',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              icon: const Icon(Icons.menu_book, color: Colors.white, size: 22),
-              onPressed: _openReadingList,
-              tooltip: 'Reading List',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
               icon: const Icon(Icons.share, color: Colors.white, size: 22),
               onPressed: _shareCurrentPage,
               tooltip: 'Share',
               visualDensity: VisualDensity.compact,
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                HapticFeedback.lightImpact();
+                switch (value) {
+                  case 'bookmarks':
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => BookmarksScreen(
+                        onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
+                      ),
+                    ));
+                  case 'reading_list_save':
+                    _saveToReadingList();
+                  case 'reading_list_view':
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => ReadingListScreen(
+                        onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
+                      ),
+                    ));
+                  case 'dashboard':
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => DashboardScreen(
+                        onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
+                      ),
+                    ));
+                  case 'calendar':
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const CalendarScreen(),
+                    ));
+                  case 'reminder':
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const ReminderScreen(),
+                    ));
+                  case 'timer':
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const StudyTimerScreen(),
+                    ));
+                  case 'security':
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => BiometricSettingsScreen(controller: _controller),
+                    ));
+                }
+              },
+              icon: const Icon(Icons.more_vert, color: Colors.white, size: 22),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'bookmarks', child: Text('My Bookmarks')),
+                const PopupMenuItem(value: 'reading_list_save', child: Text('Save to Reading List')),
+                const PopupMenuItem(value: 'reading_list_view', child: Text('Reading List')),
+                const PopupMenuDivider(),
+                const PopupMenuItem(value: 'dashboard', child: Text('Dashboard')),
+                const PopupMenuItem(value: 'calendar', child: Text('Study Calendar')),
+                const PopupMenuItem(value: 'reminder', child: Text('Study Reminder')),
+                const PopupMenuItem(value: 'timer', child: Text('Study Timer')),
+                const PopupMenuDivider(),
+                const PopupMenuItem(value: 'security', child: Text('Security')),
+              ],
             ),
           ],
         ),
