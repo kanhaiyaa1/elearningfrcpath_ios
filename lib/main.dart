@@ -33,7 +33,6 @@ const _host = 'elearningfrcpath.com';
 
 const _tabs = [
   {'label': 'Home', 'url': 'https://elearningfrcpath.com/', 'icon': 'home'},
-  {'label': 'FRCPath', 'url': 'https://www.elearningfrcpath.com/frcpath-part-1-histopathology-course', 'icon': 'book'},
   {'label': 'Contact', 'url': 'https://www.elearningfrcpath.com/contact', 'icon': 'contact'},
   {'label': 'Login', 'url': 'https://www.elearningfrcpath.com/login', 'icon': 'person'},
 ];
@@ -219,28 +218,20 @@ class _MainScreenState extends State<MainScreen> {
           } catch (e) {
             debugPrint('userId capture error: $e');
           }
-          // Debug session — call after every page load to inspect cookies
-          if (!url.contains('/login') && !url.contains('/register')) {
-            _controller.runJavaScript('''
-              fetch('https://www.elearningfrcpath.com/api/debug-session', {
-                method: 'POST',
-                credentials: 'include'
-              })
-              .then(r => r.json())
-              .then(data => DebugSession.postMessage(JSON.stringify(data)))
-              .catch(e => DebugSession.postMessage(JSON.stringify({error: e.toString()})));
-            ''');
-          }
-          // Hide all purchase-related elements
+          // Hide all purchase/registration-related elements
           _controller.runJavaScript('''
             (function() {
               document.querySelectorAll('a, button').forEach(function(el) {
                 var text = el.innerText.trim().toLowerCase();
+                var href = (el.getAttribute('href') || '').toLowerCase();
                 if (text === 'add to cart' ||
                     text === 'buy now' ||
                     text === 'buy now on website' ||
                     text === 'purchase' ||
-                    text === 'checkout') {
+                    text === 'checkout' ||
+                    text === 'register now' ||
+                    text === 'register here' ||
+                    href.includes('/register')) {
                   el.style.display = 'none';
                 }
               });
@@ -270,6 +261,11 @@ class _MainScreenState extends State<MainScreen> {
 
           // Block YouTube
           if (host.contains('youtube.com') || host.contains('youtu.be')) {
+            return NavigationDecision.prevent;
+          }
+
+          // Block course catalog and registration pages (Apple IAP compliance)
+          if (req.url.contains('/course/') || req.url.contains('/register')) {
             return NavigationDecision.prevent;
           }
 
@@ -525,14 +521,6 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  void _openBookmarks() {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => BookmarksScreen(
-        onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
-      ),
-    ));
-  }
-
   Future<void> _saveToReadingList() async {
     HapticFeedback.lightImpact();
     final url = await _controller.currentUrl() ?? _tabs[_currentIndex]['url']!;
@@ -574,14 +562,6 @@ class _MainScreenState extends State<MainScreen> {
         ),
       );
     }
-  }
-
-  void _openReadingList() {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => ReadingListScreen(
-        onOpenUrl: (url) => _controller.loadRequest(Uri.parse(url)),
-      ),
-    ));
   }
 
   @override
@@ -740,7 +720,6 @@ class _MainScreenState extends State<MainScreen> {
           elevation: 8,
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined), activeIcon: Icon(Icons.menu_book), label: 'FRCPath'),
             BottomNavigationBarItem(icon: Icon(Icons.contact_mail_outlined), activeIcon: Icon(Icons.contact_mail), label: 'Contact'),
             BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Login'),
           ],
