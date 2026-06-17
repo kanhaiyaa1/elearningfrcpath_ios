@@ -218,32 +218,36 @@ class _MainScreenState extends State<MainScreen> {
           } catch (e) {
             debugPrint('userId capture error: $e');
           }
-          // Hide all purchase/registration-related elements
+          // Hide all commercial/purchase/registration elements and pricing
           _controller.runJavaScript('''
             (function() {
-              document.querySelectorAll('a, button').forEach(function(el) {
-                var text = el.innerText.trim().toLowerCase();
-                var href = (el.getAttribute('href') || '').toLowerCase();
-                if (text === 'add to cart' ||
-                    text === 'buy now' ||
-                    text === 'buy now on website' ||
-                    text === 'purchase' ||
-                    text === 'checkout' ||
-                    text === 'register now' ||
-                    text === 'register here' ||
-                    href.includes('/register')) {
-                  el.style.display = 'none';
-                }
-              });
-              document.querySelectorAll('a[href*="cart/create"]').forEach(function(el) {
-                el.style.display = 'none';
-              });
-              document.querySelectorAll('a[href*="checkout"]').forEach(function(el) {
-                el.style.display = 'none';
-              });
-              document.querySelectorAll('a[href*="cart"]').forEach(function(el) {
-                el.style.display = 'none';
-              });
+              function cleanCommercialContent() {
+                document.querySelectorAll('a, button').forEach(function(el) {
+                  var text = el.innerText.trim().toLowerCase();
+                  var href = (el.getAttribute('href') || '').toLowerCase();
+                  if (text.includes('view study material') ||
+                      text.includes('view course') ||
+                      text.includes('buy now') ||
+                      text.includes('add to cart') ||
+                      text.includes('register') ||
+                      href.includes('/register') ||
+                      href.includes('/course/') ||
+                      href.includes('cart')) {
+                    el.style.display = 'none';
+                  }
+                });
+
+                var priceRegex = /(INR|₹)\\s*[\\d,]+/i;
+                document.querySelectorAll('body *').forEach(function(el) {
+                  if (el.children.length === 0 && el.innerText && priceRegex.test(el.innerText)) {
+                    el.style.display = 'none';
+                  }
+                });
+              }
+
+              cleanCommercialContent();
+              var observer = new MutationObserver(cleanCommercialContent);
+              observer.observe(document.body, { childList: true, subtree: true });
             })();
           ''');
         },
