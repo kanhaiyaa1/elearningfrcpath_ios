@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:app_links/app_links.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -218,7 +215,7 @@ class _MainScreenState extends State<MainScreen> {
           } catch (e) {
             debugPrint('userId capture error: $e');
           }
-          // Hide all commercial/purchase/registration elements and pricing
+          // Hide all commercial/purchase/registration elements, pricing, and social login buttons
           _controller.runJavaScript('''
             (function() {
               function cleanCommercialContent() {
@@ -230,6 +227,9 @@ class _MainScreenState extends State<MainScreen> {
                       text.includes('buy now') ||
                       text.includes('add to cart') ||
                       text.includes('register') ||
+                      text.includes('continue with google') ||
+                      text.includes('sign in with apple') ||
+                      text.includes('continue with apple') ||
                       href.includes('/register') ||
                       href.includes('/course/') ||
                       href.includes('cart')) {
@@ -273,22 +273,22 @@ class _MainScreenState extends State<MainScreen> {
             return NavigationDecision.prevent;
           }
 
-          // Intercept Apple login — iOS native only (Android uses WebView web flow)
-          if (Platform.isIOS && (
-              req.url.contains('appleid.apple.com') ||
-              req.url.contains('/auth/apple') ||
-              (req.url.contains('apple') && req.url.contains('authorize')))) {
-            _handleAppleSignIn();
-            return NavigationDecision.prevent;
-          }
+          // Social login buttons hidden from UI and native handlers disabled
+          // (kept for reference but not active)
+          // if (Platform.isIOS && (
+          //     req.url.contains('appleid.apple.com') ||
+          //     req.url.contains('/auth/apple') ||
+          //     (req.url.contains('apple') && req.url.contains('authorize')))) {
+          //   _handleAppleSignIn();
+          //   return NavigationDecision.prevent;
+          // }
 
-          // Intercept Google login — use native sign in instead
-          if (req.url.contains('/login/google') &&
-              !req.url.contains('callback') &&
-              !req.url.contains('success')) {
-            _handleGoogleSignIn();
-            return NavigationDecision.prevent;
-          }
+          // if (req.url.contains('/login/google') &&
+          //     !req.url.contains('callback') &&
+          //     !req.url.contains('success')) {
+          //   _handleGoogleSignIn();
+          //   return NavigationDecision.prevent;
+          // }
 
           // Allow login providers inside WebView
           if (host.contains('accounts.google.com') ||
@@ -323,96 +323,6 @@ class _MainScreenState extends State<MainScreen> {
     _triggerRateUs();
     _handleDeepLinks();
     _showOnboarding();
-  }
-
-  Future<void> _handleAppleSignIn() async {
-    try {
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-      );
-
-      final name = [
-        credential.givenName ?? '',
-        credential.familyName ?? '',
-      ].join(' ').trim();
-
-      final appleId = credential.userIdentifier ?? '';
-      final email = credential.email ?? '';
-
-      // Use WebView fetch so the request shares WebView's cookie jar
-      await _controller.runJavaScript('''
-        fetch('https://www.elearningfrcpath.com/login/apple/native', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'apple_id=${Uri.encodeComponent(appleId)}&email=${Uri.encodeComponent(email)}&name=${Uri.encodeComponent(name)}',
-          credentials: 'include'
-        })
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            window.location.href = 'https://www.elearningfrcpath.com/';
-          }
-        })
-        .catch(e => console.error('Apple login fetch error: ' + e));
-      ''');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Logged in successfully ✅'),
-            backgroundColor: Color(0xFF2E7D32),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Apple sign in error: $e');
-    }
-  }
-
-  Future<void> _handleGoogleSignIn() async {
-    try {
-      final googleSignIn = GoogleSignIn(
-        scopes: ['email', 'profile'],
-        serverClientId: '75217371093-h5cen5vejcs0ucms8c5a3rvi3ibp1oqf.apps.googleusercontent.com',
-      );
-      final account = await googleSignIn.signIn();
-      if (account == null) return;
-
-      final email = account.email;
-      final name = account.displayName ?? '';
-      final googleId = account.id;
-
-      // Use WebView fetch so the request shares WebView's cookie jar
-      await _controller.runJavaScript('''
-        fetch('https://www.elearningfrcpath.com/login/google/native', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'email=${Uri.encodeComponent(email)}&name=${Uri.encodeComponent(name)}&google_id=${Uri.encodeComponent(googleId)}',
-          credentials: 'include'
-        })
-        .then(r => r.json())
-        .then(data => {
-          if (data.success) {
-            window.location.href = 'https://www.elearningfrcpath.com/';
-          }
-        })
-        .catch(e => console.error('Google login fetch error: ' + e));
-      ''');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Logged in successfully ✅'),
-            backgroundColor: Color(0xFF2E7D32),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Google sign in error: $e');
-    }
   }
 
   Future<void> _showOnboarding() async {
