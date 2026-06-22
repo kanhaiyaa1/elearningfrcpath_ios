@@ -158,6 +158,8 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  String _currentUrl = '';
+  bool _isLoggedIn = false;
   bool _isLoading = true;
   int _progress = 0;
   bool _isOnline = true;
@@ -169,6 +171,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    _loadLoginState();
     _setupConnectivity();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -196,6 +199,13 @@ class _MainScreenState extends State<MainScreen> {
         },
         onProgress: (p) => setState(() => _progress = p),
         onPageFinished: (url) async {
+          if (_currentUrl.contains('/login') && !url.contains('/login')) {
+            setState(() { _currentIndex = 0; _isLoggedIn = true; });
+          }
+          if (url.contains('/login') && _isLoggedIn) {
+            setState(() => _isLoggedIn = false);
+          }
+          _currentUrl = url;
           setState(() => _isLoading = false);
           if (url.contains('/login') || url.contains('/forgot-password')) {
             _controller.runJavaScript('''
@@ -413,6 +423,12 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  Future<void> _loadLoginState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id') ?? '';
+    if (mounted) setState(() => _isLoggedIn = userId.isNotEmpty);
+  }
+
   void _setupConnectivity() {
     Connectivity().checkConnectivity().then((r) {
       if (mounted) setState(() => _isOnline = _online(r));
@@ -605,7 +621,10 @@ class _MainScreenState extends State<MainScreen> {
                     ));
                   case 'security':
                     Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => BiometricSettingsScreen(controller: _controller),
+                      builder: (_) => BiometricSettingsScreen(
+                        controller: _controller,
+                        onDeleted: () => setState(() => _isLoggedIn = false),
+                      ),
                     ));
                 }
               },
@@ -670,8 +689,19 @@ class _MainScreenState extends State<MainScreen> {
         ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (i) {
+          onTap: (i) async {
             HapticFeedback.lightImpact();
+            const loginTabIndex = 2;
+            if (i == loginTabIndex) {
+              final prefs = await SharedPreferences.getInstance();
+              final userId = prefs.getString('user_id') ??
+                             prefs.getInt('user_id')?.toString() ?? '';
+              if (userId.isNotEmpty) {
+                setState(() { _currentIndex = 0; _isLoading = true; });
+                _controller.loadRequest(Uri.parse(_tabs[0]['url']!));
+                return;
+              }
+            }
             setState(() { _currentIndex = i; _isLoading = true; });
             _controller.loadRequest(Uri.parse(_tabs[i]['url']!));
           },
@@ -680,10 +710,11 @@ class _MainScreenState extends State<MainScreen> {
           unselectedItemColor: Colors.grey,
           backgroundColor: Colors.white,
           elevation: 8,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.contact_mail_outlined), activeIcon: Icon(Icons.contact_mail), label: 'Contact'),
-            BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Login'),
+          items: [
+            const BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
+            const BottomNavigationBarItem(icon: Icon(Icons.contact_mail_outlined), activeIcon: Icon(Icons.contact_mail), label: 'Contact'),
+            if (!_isLoggedIn)
+              const BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Login'),
           ],
         ),
       ),
