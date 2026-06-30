@@ -158,16 +158,20 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  String _currentUrl = '';
+  bool _isLoggedIn = false;
   bool _isLoading = true;
   int _progress = 0;
   bool _isOnline = true;
   bool _hasPageError = false;
+  bool _pageLoading = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   late final WebViewController _controller;
 
   @override
   void initState() {
     super.initState();
+    _loadLoginState();
     _setupConnectivity();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -177,7 +181,7 @@ class _MainScreenState extends State<MainScreen> {
         'Chrome/124.0.0.0 Mobile Safari/537.36 ELC_APP/1.0',
       )
       ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) {
+        onPageStarted: (url) {
           setState(() {
             _isLoading = true;
             _hasPageError = false;
@@ -195,7 +199,51 @@ class _MainScreenState extends State<MainScreen> {
         },
         onProgress: (p) => setState(() => _progress = p),
         onPageFinished: (url) async {
+          if (_currentUrl.contains('/login') && !url.contains('/login')) {
+            setState(() { _currentIndex = 0; _isLoggedIn = true; });
+          }
+          if (url.contains('/login') && _isLoggedIn) {
+            setState(() => _isLoggedIn = false);
+          }
+          _currentUrl = url;
           setState(() => _isLoading = false);
+          if (url.contains('/login') || url.contains('/forgot-password')) {
+            _controller.runJavaScript('''
+              (function() {
+                var meta = document.querySelector('meta[name="viewport"]');
+                if (meta) {
+                  meta.setAttribute('content',
+                    'width=device-width, initial-scale=1.0, interactive-widget=resizes-content');
+                }
+                var walker = document.createTreeWalker(
+                  document.body, NodeFilter.SHOW_TEXT, null, false
+                );
+                var toHide = [];
+                var toReplace = [];
+                while (walker.nextNode()) {
+                  var node = walker.currentNode;
+                  var text = node.textContent.trim();
+                  if (text.includes("don't have an account") ||
+                      text.includes("Not have an account")) {
+                    toHide.push(node.parentElement);
+                  }
+                  if (text.includes("fill the details below")) {
+                    toReplace.push(node);
+                  }
+                }
+                toHide.forEach(function(el) { if (el) el.style.display = 'none'; });
+                toReplace.forEach(function(node) {
+                  node.textContent = "Please enter your email and password to access your account.";
+                });
+              })();
+            ''').then((_) {
+              Future.delayed(const Duration(milliseconds: 600), () {
+                if (mounted) setState(() => _pageLoading = false);
+              });
+            });
+          } else {
+            setState(() => _pageLoading = false);
+          }
           // Track pages visited
           final prefs = await SharedPreferences.getInstance();
           final pages = (prefs.getInt('pages_visited') ?? 0) + 1;
@@ -262,6 +310,10 @@ class _MainScreenState extends State<MainScreen> {
         onNavigationRequest: (req) {
           final uri = Uri.parse(req.url);
           final host = uri.host;
+
+          if (req.url.contains('/login') || req.url.contains('/forgot-password')) {
+            setState(() => _pageLoading = true);
+          }
 
           // Block YouTube
           if (host.contains('youtube.com') || host.contains('youtu.be')) {
@@ -369,6 +421,12 @@ class _MainScreenState extends State<MainScreen> {
         _controller.loadRequest(Uri.parse('https://www.elearningfrcpath.com'));
       }
     }
+  }
+
+  Future<void> _loadLoginState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id') ?? '';
+    if (mounted) setState(() => _isLoggedIn = userId.isNotEmpty);
   }
 
   void _setupConnectivity() {
@@ -497,6 +555,7 @@ class _MainScreenState extends State<MainScreen> {
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
           backgroundColor: const Color(0xFF2E7D32),
           elevation: 0,
@@ -562,7 +621,10 @@ class _MainScreenState extends State<MainScreen> {
                     ));
                   case 'security':
                     Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => BiometricSettingsScreen(controller: _controller),
+                      builder: (_) => BiometricSettingsScreen(
+                        controller: _controller,
+                        onDeleted: () => setState(() => _isLoggedIn = false),
+                      ),
                     ));
                 }
               },
@@ -592,6 +654,11 @@ class _MainScreenState extends State<MainScreen> {
               : Stack(
                   children: [
                     WebViewWidget(controller: _controller),
+                    if (_pageLoading)
+                      const ColoredBox(
+                        color: Colors.white,
+                        child: SizedBox.expand(),
+                      ),
                     if (_hasPageError && !_isLoading)
                       _ErrorScreen(onRetry: () {
                         setState(() { _hasPageError = false; _isLoading = true; });
@@ -622,8 +689,19 @@ class _MainScreenState extends State<MainScreen> {
         ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (i) {
+          onTap: (i) async {
             HapticFeedback.lightImpact();
+            const loginTabIndex = 2;
+            if (i == loginTabIndex) {
+              final prefs = await SharedPreferences.getInstance();
+              final userId = prefs.getString('user_id') ??
+                             prefs.getInt('user_id')?.toString() ?? '';
+              if (userId.isNotEmpty) {
+                setState(() { _currentIndex = 0; _isLoading = true; });
+                _controller.loadRequest(Uri.parse(_tabs[0]['url']!));
+                return;
+              }
+            }
             setState(() { _currentIndex = i; _isLoading = true; });
             _controller.loadRequest(Uri.parse(_tabs[i]['url']!));
           },
@@ -632,10 +710,11 @@ class _MainScreenState extends State<MainScreen> {
           unselectedItemColor: Colors.grey,
           backgroundColor: Colors.white,
           elevation: 8,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.contact_mail_outlined), activeIcon: Icon(Icons.contact_mail), label: 'Contact'),
-            BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Login'),
+          items: [
+            const BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
+            const BottomNavigationBarItem(icon: Icon(Icons.contact_mail_outlined), activeIcon: Icon(Icons.contact_mail), label: 'Contact'),
+            if (!_isLoggedIn)
+              const BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Login'),
           ],
         ),
       ),

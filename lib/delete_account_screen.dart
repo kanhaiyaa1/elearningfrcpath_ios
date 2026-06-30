@@ -8,7 +8,8 @@ void Function(String)? deleteResultCallback;
 
 class DeleteAccountScreen extends StatefulWidget {
   final WebViewController controller;
-  const DeleteAccountScreen({super.key, required this.controller});
+  final VoidCallback? onDeleted;
+  const DeleteAccountScreen({super.key, required this.controller, this.onDeleted});
   @override
   State<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
 }
@@ -35,9 +36,10 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     if (data['success'] == true) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-      widget.controller.loadRequest(
-        Uri.parse('https://www.elearningfrcpath.com/logout'),
+      await widget.controller.loadRequest(
+        Uri.parse('https://www.elearningfrcpath.com/login'),
       );
+      widget.onDeleted?.call();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

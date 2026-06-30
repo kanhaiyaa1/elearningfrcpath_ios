@@ -7,7 +7,8 @@ import 'delete_account_screen.dart';
 
 class BiometricSettingsScreen extends StatefulWidget {
   final WebViewController controller;
-  const BiometricSettingsScreen({super.key, required this.controller});
+  final VoidCallback? onDeleted;
+  const BiometricSettingsScreen({super.key, required this.controller, this.onDeleted});
   @override
   State<BiometricSettingsScreen> createState() => _BiometricSettingsScreenState();
 }
@@ -163,6 +164,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                   onPressed: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => DeleteAccountScreen(
                         controller: widget.controller,
+                        onDeleted: widget.onDeleted,
                       ))),
                   icon: const Icon(Icons.delete_forever, color: Colors.red),
                   label: const Text('Delete My Account',
